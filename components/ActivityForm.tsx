@@ -9,12 +9,13 @@ interface ActivityFormProps {
     onSubmit: (activity: Omit<Activity, 'id'> | Activity, recurrenceLimit?: Date) => void;
     onClose: () => void;
     customStatusLabels?: Record<string, string>;
+    onUpload?: (file: File) => Promise<string | null>;
 }
 
 const initialFormState: Omit<Activity, 'id' | 'horaInicioReal' | 'horaFimReal'> & { horaInicioReal?: string; horaFimReal?: string } = {
     tag: '',
     tipo: 'PLANO',
-    periodicidade: Recorrencia.NaoHa, // Changed default to NaoHa to simplify logic
+    periodicidade: Recorrencia.NaoHa,
     area: '',
     descricao: '',
     jornada: '08h - 16h',
@@ -38,7 +39,7 @@ const initialFormState: Omit<Activity, 'id' | 'horaInicioReal' | 'horaFimReal'> 
 };
 
 
-export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, onClose, customStatusLabels = {} }) => {
+export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, onClose, customStatusLabels = {}, onUpload }) => {
     const [formData, setFormData] = useState<Omit<Activity, 'id'> | Activity>(activity || initialFormState);
     const [recurrenceLimit, setRecurrenceLimit] = useState<string>('');
 
@@ -68,20 +69,39 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
         }
     }
 
-    const handleSingleFileChange = (e: React.ChangeEvent<HTMLInputElement>, field: 'beforeImage' | 'afterImage') => {
+    const fileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => resolve(event.target?.result as string);
+            reader.onerror = (error) => reject(error);
+            reader.readAsDataURL(file);
+        });
+    };
+
+    const handleSingleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: 'beforeImage' | 'afterImage') => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const newAttachment: Attachment = {
-                    id: `file_${Date.now()}_${file.name}`,
-                    name: file.name,
-                    type: 'image',
-                    url: event.target?.result as string,
-                };
-                setFormData(prev => ({ ...prev, [field]: newAttachment }));
+            let url: string | null = null;
+
+            if (onUpload) {
+                try {
+                    url = await onUpload(file);
+                } catch (e) {
+                    console.error("Upload failed", e);
+                }
+            }
+
+            if (!url) {
+                url = await fileToBase64(file);
+            }
+
+            const newAttachment: Attachment = {
+                id: `file_${Date.now()}_${file.name}`,
+                name: file.name,
+                type: 'image',
+                url: url,
             };
-            reader.readAsDataURL(file);
+            setFormData(prev => ({ ...prev, [field]: newAttachment }));
         }
         e.target.value = '';
     };
@@ -91,26 +111,37 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
     };
 
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const files = Array.from(e.target.files);
-            files.forEach((file: File) => {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const newAttachment: Attachment = {
-                        id: `file_${Date.now()}_${file.name}`,
-                        name: file.name,
-                        type: file.type.startsWith('image') ? 'image' : (file.type.startsWith('video') ? 'video' : 'file'),
-                        url: event.target?.result as string,
-                    };
-                    setFormData(prev => ({
-                        ...prev,
-                        attachments: [...(prev.attachments || []), newAttachment],
-                    }));
+            
+            for (const file of files) {
+                let url: string | null = null;
+                if (onUpload) {
+                    try {
+                        url = await onUpload(file);
+                    } catch (e) {
+                        console.error("Upload failed", e);
+                    }
+                }
+
+                if (!url) {
+                    url = await fileToBase64(file);
+                }
+
+                const newAttachment: Attachment = {
+                    id: `file_${Date.now()}_${file.name}`,
+                    name: file.name,
+                    type: file.type.startsWith('image') ? 'image' : (file.type.startsWith('video') ? 'video' : 'file'),
+                    url: url,
                 };
-                reader.readAsDataURL(file);
-            });
+                setFormData(prev => ({
+                    ...prev,
+                    attachments: [...(prev.attachments || []), newAttachment],
+                }));
+            }
         }
+        e.target.value = ''; // Reset input
     };
     
     const removeAttachment = (attachmentId: string) => {

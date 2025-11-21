@@ -35,7 +35,7 @@ const App: React.FC = () => {
         return 'light';
     });
 
-    // Data States - Initialize from LocalStorage first for immediate usability
+    // Data States - Initialize from LocalStorage first for immediate usability (Offline First approach)
     const [users, setUsers] = useState<User[]>(() => {
         const stored = localStorage.getItem('db_users');
         return stored ? JSON.parse(stored) : [];
@@ -89,7 +89,8 @@ const App: React.FC = () => {
         };
     });
 
-    // --- LOCAL STORAGE PERSISTENCE (Backup if Supabase fails) ---
+    // --- LOCAL STORAGE PERSISTENCE (Backup) ---
+    // We keep this to ensure the app works even if Supabase is down or not configured yet.
     useEffect(() => {
         localStorage.setItem('db_users', JSON.stringify(users));
     }, [users]);
@@ -136,20 +137,20 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const loadData = async () => {
-            console.log("Attempting to load data from Supabase...");
+            console.log("Conectando ao Supabase...");
             
             // 1. Load Users
             const { data: usersData, error: usersError } = await supabase.from('app_users').select('*');
             
             if (usersError) {
-                console.error("Error loading users from Supabase:", usersError.message);
+                console.error("Erro ao carregar usuários do Supabase:", usersError.message);
                 if (usersError.message.includes('relation "public.app_users" does not exist') || usersError.message.includes('Could not find the table')) {
                     logMissingTablesError();
                 }
-                // If Supabase fails, we rely on the initial state loaded from LocalStorage
+                // Fallback: If no users loaded from Supabase AND no local users, use Mock
                 if (users.length === 0) setUsers(mockUsers);
             } else if (usersData && usersData.length > 0) {
-                // Map Supabase columns to User type
+                // Success: Use Supabase users as the source of truth
                 const mappedUsers: User[] = usersData.map(u => ({
                     username: u.username,
                     password: u.password,
@@ -159,26 +160,31 @@ const App: React.FC = () => {
                     backgroundImage: u.background_image
                 }));
                 setUsers(mappedUsers);
+                
+                // Refresh current user session from the fresh data
+                const storedUserStr = localStorage.getItem('currentUser');
+                if (storedUserStr) {
+                    const storedUser = JSON.parse(storedUserStr);
+                    const freshUser = mappedUsers.find(u => u.username === storedUser.username);
+                    if (freshUser) {
+                        setUser(freshUser);
+                        // Update background immediately if it changed in the cloud
+                        if (freshUser.backgroundImage !== storedUser.backgroundImage) {
+                            // Trigger re-render logic handled by 'user' state
+                        }
+                    } else {
+                        setUser(storedUser); // Fallback
+                    }
+                }
             } else if (users.length === 0) {
+                 // Supabase connected but empty table
                  setUsers(mockUsers);
             }
             
-            // Restore session (always local)
-            const storedUser = localStorage.getItem('currentUser');
-            if (storedUser) {
-                const parsedUser = JSON.parse(storedUser);
-                // Try to find in loaded users (from DB or Mock)
-                // We need to use 'mappedUsers' if valid, otherwise current 'users' state might be stale in this closure? 
-                // Actually, we can rely on the set state effect or just look up.
-                // For simplicity, let's just set it if we found data or use existing
-                setUser(parsedUser);
-            }
-
             // 2. Load Activities
             const { data: actsData, error: actsError } = await supabase.from('activities').select('json_data');
             if (actsError) {
-                 console.error("Error loading activities:", actsError.message);
-                 // Rely on LocalStorage
+                 console.error("Erro ao carregar atividades:", actsError.message);
             } else if (actsData && actsData.length > 0) {
                 const loadedActs = actsData.map(row => row.json_data);
                 setActivities(loadedActs);
@@ -187,8 +193,7 @@ const App: React.FC = () => {
             // 3. Load Import Batches
             const { data: batchData, error: batchError } = await supabase.from('import_batches').select('json_data');
              if (batchError) {
-                 console.error("Error loading batches:", batchError.message);
-                 // Rely on LocalStorage
+                 console.error("Erro ao carregar lotes:", batchError.message);
             } else if (batchData && batchData.length > 0) {
                 setImportBatches(batchData.map(row => row.json_data));
             }
@@ -206,12 +211,8 @@ const App: React.FC = () => {
                 id: activity.id,
                 json_data: cleanActivity
             });
-            if (error) {
-                if (error.message.includes('Could not find the table')) {
-                    // Suppress repeated logs, handled by init check usually, or just log once
-                } else {
-                    console.error('Error saving activity:', error.message);
-                }
+            if (error && !error.message.includes('Could not find the table')) {
+                console.error('Error saving activity:', error.message);
             }
         } catch (e) {
             console.error("Exception saving activity", e);
@@ -239,6 +240,8 @@ const App: React.FC = () => {
             if (error) {
                 if (error.message.includes('Could not find the table')) logMissingTablesError();
                 else console.error('Error saving user:', error.message);
+            } else {
+                console.log("User saved to Supabase:", u.username);
             }
         } catch (e) {}
     };
@@ -275,35 +278,39 @@ const App: React.FC = () => {
 
     const uploadFileToSupabase = async (file: File, folder: string = 'uploads'): Promise<string | null> => {
         try {
-            // Try uploading to Supabase Storage
+            // Sanitize filename
             const fileExt = file.name.split('.').pop();
-            const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+            const cleanName = file.name.replace(/[^a-zA-Z0-9]/g, '_');
+            const fileName = `${Date.now()}_${cleanName}.${fileExt}`;
             const filePath = `${folder}/${fileName}`;
+
+            console.log(`Uploading to Supabase: ${filePath}`);
 
             const { error: uploadError } = await supabase.storage
                 .from('app-files')
-                .upload(filePath, file);
+                .upload(filePath, file, {
+                    cacheControl: '3600',
+                    upsert: false
+                });
 
             if (uploadError) {
-                // Check specifically for "Bucket not found" or other config errors
-                // Also catch "Could not find the table" if it relates to storage metadata schemas
                 if (uploadError.message.includes('Bucket not found') || 
                     (uploadError as any).error === 'Bucket not found' ||
                     uploadError.message.includes('Could not find the table')) {
-                    console.warn("Storage/Bucket error. Falling back to Base64 encoding.");
+                    console.warn("Bucket not found. Using Base64 fallback.");
                     return await fileToBase64(file);
                 }
                 throw uploadError;
             }
 
             const { data } = supabase.storage.from('app-files').getPublicUrl(filePath);
+            console.log("Upload successful:", data.publicUrl);
             return data.publicUrl;
         } catch (error: any) {
-            console.warn('Error uploading file (using local fallback):', error.message || error);
+            console.warn('Upload failed (using fallback):', error.message || error);
             try {
                  return await fileToBase64(file);
             } catch (e) {
-                console.error("Base64 conversion failed", e);
                 return null;
             }
         }
@@ -390,17 +397,20 @@ const App: React.FC = () => {
         setFilters(prev => ({ ...prev, onlyMyActivities: false }));
     };
 
-    // --- UPDATED UPLOAD HANDLERS USING SUPABASE (WITH FALLBACK) ---
+    // --- UPDATED UPLOAD HANDLERS ---
 
     const handleBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0] && user) {
             const file = e.target.files[0];
-            const publicUrl = await uploadFileToSupabase(file, `users/${user.username}`);
+            // Upload to a specific user folder
+            const publicUrl = await uploadFileToSupabase(file, `users/${user.username}/background`);
             
             if (publicUrl) {
                 const updatedUser = { ...user, backgroundImage: publicUrl };
                 setUser(updatedUser);
+                // Update local state array
                 setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
+                // Save to Supabase DB
                 await saveUserToSupabase(updatedUser);
             }
         }
@@ -418,7 +428,8 @@ const App: React.FC = () => {
     const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0] && user) {
             const file = e.target.files[0];
-            const publicUrl = await uploadFileToSupabase(file, `users/${user.username}`);
+            // Upload to a specific user folder
+            const publicUrl = await uploadFileToSupabase(file, `users/${user.username}/avatar`);
 
             if (publicUrl) {
                 const updatedUser = { ...user, profilePicture: publicUrl };
@@ -450,7 +461,6 @@ const App: React.FC = () => {
 
         let nextDate = new Date(startDate);
         
-        // Start from next instance
         const addNextInterval = (date: Date) => {
              switch (baseActivity.periodicidade) {
                 case Recorrencia.Diario: date.setDate(date.getDate() + 1); break;
@@ -459,13 +469,12 @@ const App: React.FC = () => {
                 case Recorrencia.Mensal: date.setMonth(date.getMonth() + 1); break;
                 case Recorrencia.Trimestral: date.setMonth(date.getMonth() + 3); break;
                 case Recorrencia.Semestral: date.setMonth(date.getMonth() + 6); break;
-                default: date.setDate(date.getDate() + 1); // Should not happen if NaoHa check is done
+                default: date.setDate(date.getDate() + 1); 
             }
         };
 
         addNextInterval(nextDate);
 
-        // Safety cap to prevent infinite loops (e.g., 200 instances or 2 years)
         let count = 0;
         const maxInstances = 365; 
 
@@ -477,7 +486,6 @@ const App: React.FC = () => {
                 ...baseActivity,
                 horaInicio: newStart.toISOString(),
                 horaFim: newEnd.toISOString(),
-                // Ensure status is reset for future instances
                 status: ActivityStatus.Open, 
                 horaInicioReal: undefined, 
                 horaFimReal: undefined
@@ -491,7 +499,6 @@ const App: React.FC = () => {
     };
 
     const handleAddActivity = async (activityData: Omit<Activity, 'id'>, recurrenceLimit?: Date) => {
-        // Construct Activity
         const activity: Activity = {
             ...activityData,
             id: `act_${Date.now()}_0`,
@@ -499,7 +506,6 @@ const App: React.FC = () => {
 
         const activitiesToAdd: Activity[] = [activity];
         
-        // Check for recurrence generation
         if (recurrenceLimit && activity.periodicidade !== Recorrencia.NaoHa) {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { id, ...rest } = activity;
@@ -515,7 +521,6 @@ const App: React.FC = () => {
 
         setActivities(prev => [...prev, ...activitiesToAdd]);
         
-        // Save to Supabase
         for (const act of activitiesToAdd) {
             await saveActivityToSupabase(act);
         }
@@ -524,11 +529,9 @@ const App: React.FC = () => {
     };
 
     const handleUpdateActivity = async (updatedActivity: Activity, recurrenceLimit?: Date) => {
-        // Update the original activity locally
         setActivities(prev => prev.map(act => act.id === updatedActivity.id ? updatedActivity : act));
         await saveActivityToSupabase(updatedActivity);
         
-        // Handle recurrence on edit
         if (recurrenceLimit && updatedActivity.periodicidade !== Recorrencia.NaoHa) {
              // eslint-disable-next-line @typescript-eslint/no-unused-vars
              const { id, ...activityTemplate } = updatedActivity;
@@ -589,7 +592,6 @@ const App: React.FC = () => {
         const file = event.target.files?.[0];
         if (!file) return;
         
-        // Store the file temporarily for upload on confirm
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
@@ -612,12 +614,6 @@ const App: React.FC = () => {
                 setEditingBatchId(null);
                 setInitialMapping(undefined);
                 setIsImportModalOpen(true);
-                
-                // Store file in pending state if needed for upload, 
-                // though we can't easily keep File object across renders in state if we don't use it immediately 
-                // but we will upload it if we confirm. 
-                // Actually, we can just upload it now? No, better on confirm.
-                // For now, we won't upload the raw Excel to Supabase to keep it simple unless requested.
             } catch (error) {
                 console.error(error);
                 alert("Erro ao ler arquivo.");
@@ -792,7 +788,6 @@ const App: React.FC = () => {
 
         setActivities([...currentActivities, ...newActivities]);
         
-        // Save ALL new imported activities to Supabase
         for (const act of newActivities) {
             await saveActivityToSupabase(act);
         }
