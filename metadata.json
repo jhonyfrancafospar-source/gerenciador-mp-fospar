@@ -1,0 +1,5 @@
+{
+  "name": "Gerenciador de Atividades MP",
+  "description": "Um aplicativo de gerenciamento de projetos e atividades para planejar, visualizar e acompanhar o progresso das tarefas. Inclui múltiplas visualizações como lista, quadro Kanban, gráfico de Gantt e um dashboard com análises.",
+  "requestFramePermissions": []
+}
