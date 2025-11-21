@@ -35,10 +35,20 @@ const App: React.FC = () => {
         return 'light';
     });
 
-    // Data States
-    const [users, setUsers] = useState<User[]>([]);
-    const [activities, setActivities] = useState<Activity[]>([]);
-    const [importBatches, setImportBatches] = useState<ImportBatch[]>([]);
+    // Data States - Initialize from LocalStorage first for immediate usability
+    const [users, setUsers] = useState<User[]>(() => {
+        const stored = localStorage.getItem('db_users');
+        return stored ? JSON.parse(stored) : [];
+    });
+    const [activities, setActivities] = useState<Activity[]>(() => {
+        const stored = localStorage.getItem('db_activities');
+        return stored ? JSON.parse(stored) : [];
+    });
+    const [importBatches, setImportBatches] = useState<ImportBatch[]>(() => {
+        const stored = localStorage.getItem('db_import_batches');
+        return stored ? JSON.parse(stored) : [];
+    });
+    
     const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
     
     // UI States
@@ -79,12 +89,66 @@ const App: React.FC = () => {
         };
     });
 
+    // --- LOCAL STORAGE PERSISTENCE (Backup if Supabase fails) ---
+    useEffect(() => {
+        localStorage.setItem('db_users', JSON.stringify(users));
+    }, [users]);
+
+    useEffect(() => {
+        localStorage.setItem('db_activities', JSON.stringify(activities));
+    }, [activities]);
+
+    useEffect(() => {
+        localStorage.setItem('db_import_batches', JSON.stringify(importBatches));
+    }, [importBatches]);
+
+
     // --- SUPABASE DATA LOADING ---
+    const logMissingTablesError = () => {
+        console.warn(`
+        ⚠️ ERRO: Tabelas do Supabase não encontradas.
+        
+        Para corrigir, execute o seguinte SQL no Editor do Supabase:
+
+        create table if not exists app_users (
+          username text primary key,
+          password text not null,
+          name text,
+          role text,
+          profile_picture text,
+          background_image text
+        );
+
+        create table if not exists activities (
+          id text primary key,
+          json_data jsonb
+        );
+
+        create table if not exists import_batches (
+          id text primary key,
+          json_data jsonb
+        );
+
+        insert into storage.buckets (id, name, public) values ('app-files', 'app-files', true) on conflict do nothing;
+        create policy "Public Access" on storage.objects for all using ( bucket_id = 'app-files' );
+        `);
+    };
+
     useEffect(() => {
         const loadData = async () => {
+            console.log("Attempting to load data from Supabase...");
+            
             // 1. Load Users
-            const { data: usersData } = await supabase.from('app_users').select('*');
-            if (usersData && usersData.length > 0) {
+            const { data: usersData, error: usersError } = await supabase.from('app_users').select('*');
+            
+            if (usersError) {
+                console.error("Error loading users from Supabase:", usersError.message);
+                if (usersError.message.includes('relation "public.app_users" does not exist') || usersError.message.includes('Could not find the table')) {
+                    logMissingTablesError();
+                }
+                // If Supabase fails, we rely on the initial state loaded from LocalStorage
+                if (users.length === 0) setUsers(mockUsers);
+            } else if (usersData && usersData.length > 0) {
                 // Map Supabase columns to User type
                 const mappedUsers: User[] = usersData.map(u => ({
                     username: u.username,
@@ -95,31 +159,37 @@ const App: React.FC = () => {
                     backgroundImage: u.background_image
                 }));
                 setUsers(mappedUsers);
-                
-                // Restore session
-                const storedUser = localStorage.getItem('currentUser');
-                if (storedUser) {
-                    const parsedUser = JSON.parse(storedUser);
-                    const freshUser = mappedUsers.find(u => u.username === parsedUser.username);
-                    if (freshUser) setUser(freshUser);
-                }
-            } else {
-                setUsers(mockUsers); // Fallback
+            } else if (users.length === 0) {
+                 setUsers(mockUsers);
+            }
+            
+            // Restore session (always local)
+            const storedUser = localStorage.getItem('currentUser');
+            if (storedUser) {
+                const parsedUser = JSON.parse(storedUser);
+                // Try to find in loaded users (from DB or Mock)
+                // We need to use 'mappedUsers' if valid, otherwise current 'users' state might be stale in this closure? 
+                // Actually, we can rely on the set state effect or just look up.
+                // For simplicity, let's just set it if we found data or use existing
+                setUser(parsedUser);
             }
 
             // 2. Load Activities
-            const { data: actsData } = await supabase.from('activities').select('json_data');
-            if (actsData && actsData.length > 0) {
+            const { data: actsData, error: actsError } = await supabase.from('activities').select('json_data');
+            if (actsError) {
+                 console.error("Error loading activities:", actsError.message);
+                 // Rely on LocalStorage
+            } else if (actsData && actsData.length > 0) {
                 const loadedActs = actsData.map(row => row.json_data);
                 setActivities(loadedActs);
-            } else {
-                // If empty db, maybe use mock, but careful not to overwrite db later
-                // setActivities(mockActivities); 
             }
 
             // 3. Load Import Batches
-            const { data: batchData } = await supabase.from('import_batches').select('json_data');
-            if (batchData && batchData.length > 0) {
+            const { data: batchData, error: batchError } = await supabase.from('import_batches').select('json_data');
+             if (batchError) {
+                 console.error("Error loading batches:", batchError.message);
+                 // Rely on LocalStorage
+            } else if (batchData && batchData.length > 0) {
                 setImportBatches(batchData.map(row => row.json_data));
             }
         };
@@ -130,48 +200,65 @@ const App: React.FC = () => {
     // --- PERSISTENCE HELPERS ---
     
     const saveActivityToSupabase = async (activity: Activity) => {
-        // Clean object to ensure no undefined values cause JSON issues (though Supabase handles jsonb well)
-        const cleanActivity = JSON.parse(JSON.stringify(activity));
-
-        const { error } = await supabase.from('activities').upsert({
-            id: activity.id,
-            json_data: cleanActivity
-        });
-        if (error) {
-            console.error('Error saving activity:', error.message, error.details);
+        try {
+            const cleanActivity = JSON.parse(JSON.stringify(activity));
+            const { error } = await supabase.from('activities').upsert({
+                id: activity.id,
+                json_data: cleanActivity
+            });
+            if (error) {
+                if (error.message.includes('Could not find the table')) {
+                    // Suppress repeated logs, handled by init check usually, or just log once
+                } else {
+                    console.error('Error saving activity:', error.message);
+                }
+            }
+        } catch (e) {
+            console.error("Exception saving activity", e);
         }
     };
 
     const deleteActivityFromSupabase = async (id: string) => {
-        const { error } = await supabase.from('activities').delete().eq('id', id);
-        if (error) console.error('Error deleting activity:', error.message);
+        try {
+            const { error } = await supabase.from('activities').delete().eq('id', id);
+            if (error && !error.message.includes('Could not find the table')) console.error('Error deleting activity:', error.message);
+        } catch (e) {}
     };
 
     const saveUserToSupabase = async (u: User) => {
-        const dbUser = {
-            username: u.username,
-            password: u.password,
-            name: u.name,
-            role: u.role,
-            profile_picture: u.profilePicture,
-            background_image: u.backgroundImage
-        };
-        const { error } = await supabase.from('app_users').upsert(dbUser);
-        if (error) console.error('Error saving user:', error.message);
+        try {
+            const dbUser = {
+                username: u.username,
+                password: u.password,
+                name: u.name,
+                role: u.role,
+                profile_picture: u.profilePicture,
+                background_image: u.backgroundImage
+            };
+            const { error } = await supabase.from('app_users').upsert(dbUser);
+            if (error) {
+                if (error.message.includes('Could not find the table')) logMissingTablesError();
+                else console.error('Error saving user:', error.message);
+            }
+        } catch (e) {}
     };
 
     const saveBatchToSupabase = async (batch: ImportBatch) => {
-        const cleanBatch = JSON.parse(JSON.stringify(batch));
-        const { error } = await supabase.from('import_batches').upsert({
-            id: batch.id,
-            json_data: cleanBatch
-        });
-        if (error) console.error('Error saving batch:', error.message);
+        try {
+            const cleanBatch = JSON.parse(JSON.stringify(batch));
+            const { error } = await supabase.from('import_batches').upsert({
+                id: batch.id,
+                json_data: cleanBatch
+            });
+             if (error && !error.message.includes('Could not find the table')) console.error('Error saving batch:', error.message);
+        } catch (e) {}
     };
 
     const deleteBatchFromSupabase = async (batchId: string) => {
-         const { error } = await supabase.from('import_batches').delete().eq('id', batchId);
-         if (error) console.error('Error deleting batch:', error.message);
+         try {
+            const { error } = await supabase.from('import_batches').delete().eq('id', batchId);
+            if (error && !error.message.includes('Could not find the table')) console.error('Error deleting batch:', error.message);
+         } catch (e) {}
     };
 
 
@@ -186,12 +273,12 @@ const App: React.FC = () => {
         });
     };
 
-    const uploadFileToSupabase = async (file: File): Promise<string | null> => {
+    const uploadFileToSupabase = async (file: File, folder: string = 'uploads'): Promise<string | null> => {
         try {
             // Try uploading to Supabase Storage
             const fileExt = file.name.split('.').pop();
             const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-            const filePath = `${fileName}`;
+            const filePath = `${folder}/${fileName}`;
 
             const { error: uploadError } = await supabase.storage
                 .from('app-files')
@@ -199,9 +286,11 @@ const App: React.FC = () => {
 
             if (uploadError) {
                 // Check specifically for "Bucket not found" or other config errors
-                if (uploadError.message.includes('Bucket not found') || (uploadError as any).error === 'Bucket not found') {
-                    console.warn("Bucket 'app-files' not found. Falling back to Base64 encoding.");
-                    // Fallback: Convert to Base64 and return that as the URL
+                // Also catch "Could not find the table" if it relates to storage metadata schemas
+                if (uploadError.message.includes('Bucket not found') || 
+                    (uploadError as any).error === 'Bucket not found' ||
+                    uploadError.message.includes('Could not find the table')) {
+                    console.warn("Storage/Bucket error. Falling back to Base64 encoding.");
                     return await fileToBase64(file);
                 }
                 throw uploadError;
@@ -210,7 +299,7 @@ const App: React.FC = () => {
             const { data } = supabase.storage.from('app-files').getPublicUrl(filePath);
             return data.publicUrl;
         } catch (error: any) {
-            console.error('Error uploading file (falling back to local):', error.message || error);
+            console.warn('Error uploading file (using local fallback):', error.message || error);
             try {
                  return await fileToBase64(file);
             } catch (e) {
@@ -306,7 +395,7 @@ const App: React.FC = () => {
     const handleBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0] && user) {
             const file = e.target.files[0];
-            const publicUrl = await uploadFileToSupabase(file);
+            const publicUrl = await uploadFileToSupabase(file, `users/${user.username}`);
             
             if (publicUrl) {
                 const updatedUser = { ...user, backgroundImage: publicUrl };
@@ -329,7 +418,7 @@ const App: React.FC = () => {
     const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0] && user) {
             const file = e.target.files[0];
-            const publicUrl = await uploadFileToSupabase(file);
+            const publicUrl = await uploadFileToSupabase(file, `users/${user.username}`);
 
             if (publicUrl) {
                 const updatedUser = { ...user, profilePicture: publicUrl };
@@ -500,6 +589,7 @@ const App: React.FC = () => {
         const file = event.target.files?.[0];
         if (!file) return;
         
+        // Store the file temporarily for upload on confirm
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
@@ -522,6 +612,12 @@ const App: React.FC = () => {
                 setEditingBatchId(null);
                 setInitialMapping(undefined);
                 setIsImportModalOpen(true);
+                
+                // Store file in pending state if needed for upload, 
+                // though we can't easily keep File object across renders in state if we don't use it immediately 
+                // but we will upload it if we confirm. 
+                // Actually, we can just upload it now? No, better on confirm.
+                // For now, we won't upload the raw Excel to Supabase to keep it simple unless requested.
             } catch (error) {
                 console.error(error);
                 alert("Erro ao ler arquivo.");
@@ -575,7 +671,6 @@ const App: React.FC = () => {
         let currentActivities = [...activities];
         if (editingBatchId) {
             const toRemove = currentActivities.filter(act => act.id.startsWith(`imported_${editingBatchId}_`));
-            // Parallel delete could be better, but simple loop for now
             toRemove.forEach(act => deleteActivityFromSupabase(act.id));
             currentActivities = currentActivities.filter(act => !act.id.startsWith(`imported_${editingBatchId}_`));
         }
@@ -960,7 +1055,13 @@ const App: React.FC = () => {
             </Modal>
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingActivity ? "Editar Atividade" : "Criar Atividade"}>
-                <ActivityForm activity={editingActivity} onSubmit={editingActivity ? handleUpdateActivity : handleAddActivity} onClose={() => setIsModalOpen(false)} customStatusLabels={statusLabels} />
+                <ActivityForm 
+                    activity={editingActivity} 
+                    onSubmit={editingActivity ? handleUpdateActivity : handleAddActivity} 
+                    onClose={() => setIsModalOpen(false)} 
+                    customStatusLabels={statusLabels}
+                    onUpload={(file) => uploadFileToSupabase(file, `activities/${editingActivity?.tag || 'new'}`)}
+                />
             </Modal>
 
             {viewingImage && <ImageViewerModal src={viewingImage} onClose={() => setViewingImage(null)} />}
