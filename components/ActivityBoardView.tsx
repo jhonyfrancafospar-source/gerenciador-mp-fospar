@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import type { Activity, ActivityStatus } from '../types';
 import { ActivityStatus as StatusEnum } from '../types';
@@ -73,8 +72,8 @@ export const ActivityBoardView: React.FC<ActivityBoardViewProps> = ({ activities
                         </div>
 
                         <div className="flex-1 p-2 space-y-3 overflow-y-auto rounded-lg scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
-                            {/* "Add Task" placeholder button - visual only as per screenshot vibe */}
-                            <button className="w-full text-left text-gray-600 dark:text-gray-300 hover:bg-white/20 flex items-center text-sm px-2 py-1 mb-2 transition-colors rounded">
+                            {/* "Add Task" placeholder button - Enhanced Visibility */}
+                            <button className="w-full text-left text-white font-bold flex items-center text-sm px-2 py-1 mb-2 transition-colors rounded hover:bg-white/20 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                                 <PlusIcon className="w-4 h-4 mr-1" /> Adicionar Tarefa
                             </button>
 

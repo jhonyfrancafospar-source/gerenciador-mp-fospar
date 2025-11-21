@@ -1,10 +1,13 @@
-
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { Activity } from '../types';
 import { ActivityStatus, Criticidade } from '../types';
 import { getStatusLabel } from '../utils/styleUtils';
 import { ChartBarIcon } from './icons/ChartBarIcon';
 import { ChartPieIcon } from './icons/ChartPieIcon';
+import { 
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
+    PieChart, Pie, Cell, LineChart, Line 
+} from 'recharts';
 
 interface DashboardViewProps {
     activities: Activity[];
@@ -29,20 +32,8 @@ const CRITICIDADE_COLORS: { [key in Criticidade]: string } = {
 type ChartType = 'bar' | 'pie' | 'line';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ activities, customStatusLabels = {} }) => {
-    const [rechartsLib, setRechartsLib] = useState<any>(null);
     const [statusChartType, setStatusChartType] = useState<ChartType>('bar');
     const [critChartType, setCritChartType] = useState<ChartType>('pie');
-
-    useEffect(() => {
-        const checkRecharts = () => {
-            if ((window as any).Recharts) {
-                setRechartsLib((window as any).Recharts);
-            } else {
-                setTimeout(checkRecharts, 200);
-            }
-        };
-        checkRecharts();
-    }, []);
     
     // --- Data Preparation ---
 
@@ -90,20 +81,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activities, custom
             </div>
         );
     }
-
-    if (!rechartsLib) {
-        return (
-            <div className="flex flex-col items-center justify-center h-96 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-lg shadow-lg space-y-4">
-                <div className="w-12 h-12 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-                <p className="text-lg text-gray-500 dark:text-gray-400">Carregando gráficos...</p>
-            </div>
-        );
-    }
-
-    const { 
-        BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-        PieChart, Pie, Cell, LineChart, Line 
-    } = rechartsLib;
 
     // Custom Tooltip
     const CustomTooltip = ({ active, payload, label }: any) => {
