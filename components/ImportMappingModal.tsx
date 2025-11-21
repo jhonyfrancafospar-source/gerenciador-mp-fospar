@@ -21,6 +21,7 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         supervisor: '',
         area: '',
         turno: '',
+        data: '',
         horaInicio: '',
         horaFim: '',
         duracao: '',
@@ -37,6 +38,7 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         { key: 'supervisor', label: 'Supervisor', help: 'Responsável pela área/turno (na planilha antiga: Responsável)' },
         { key: 'area', label: 'Área', help: 'Localização (ex: Linha 01)' },
         { key: 'turno', label: 'Turno', help: 'A, B, C, D ou ADM' },
+        { key: 'data', label: 'Data', help: 'Coluna de Data (caso separada da hora)' },
         { key: 'horaInicio', label: 'Hora Início', help: 'Horário planejado de início' },
         { key: 'horaFim', label: 'Hora Fim', help: 'Horário planejado de fim' },
         { key: 'duracao', label: 'Duração', help: 'Tempo estimado (opcional, substitui o cálculo automático)' },
@@ -68,6 +70,7 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         newMapping.supervisor = findBestMatch(['responsável', 'responsavel', 'supervisor']);
         newMapping.area = findBestMatch(['área', 'area', 'setor']);
         newMapping.turno = findBestMatch(['turno']);
+        newMapping.data = findBestMatch(['data', 'dia', 'date']);
         newMapping.horaInicio = findBestMatch(['início', 'inicio', 'hora inicio']);
         newMapping.horaFim = findBestMatch(['fim', 'término', 'termino', 'hora fim']);
         newMapping.duracao = findBestMatch(['duração', 'duracao', 'tempo', 'estimado']);

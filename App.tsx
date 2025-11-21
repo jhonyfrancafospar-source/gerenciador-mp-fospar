@@ -1,4 +1,6 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom/client'; // Explicit import for error prevention
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
 import { ActivityListView } from './components/ActivityListView';
@@ -13,13 +15,14 @@ import { ActivityForm } from './components/ActivityForm';
 import { LoginView } from './components/LoginView';
 import { ImportMappingModal } from './components/ImportMappingModal';
 import { mockActivities, mockUsers } from './data/mockData';
-import { Activity, ViewType, FilterType, ActivityStatus, Criticidade, AuditLogEntry, User, ImportMapping, ImportBatch, Recorrencia } from './types';
+import { Activity, ViewType, FilterType, ActivityStatus, Criticidade, AuditLogEntry, User, ImportMapping, ImportBatch, Recorrencia, Attachment } from './types';
 import { PlusIcon } from './components/icons/PlusIcon';
 import { ImageViewerModal } from './components/ImageViewerModal';
 import { PhotoIcon } from './components/icons/PhotoIcon';
 import { UserIcon } from './components/icons/UserIcon';
 import { TrashIcon } from './components/icons/TrashIcon';
 import { PencilIcon } from './components/icons/PencilIcon';
+import { supabase } from './supabaseClient';
 
 const App: React.FC = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -32,45 +35,28 @@ const App: React.FC = () => {
         return 'light';
     });
 
-    const [users, setUsers] = useState<User[]>(() => {
-        const storedUsers = localStorage.getItem('db_users_secure');
-        if (storedUsers) {
-            return JSON.parse(storedUsers);
-        }
-        return mockUsers;
-    });
-
-    const [user, setUser] = useState<User | null>(() => {
-        const storedUser = localStorage.getItem('currentUser');
-        return storedUser ? JSON.parse(storedUser) : null;
-    });
-    const [loginError, setLoginError] = useState<string | undefined>();
-
-    // --- PERSISTENCE LOGIC START ---
-    const [activities, setActivities] = useState<Activity[]>(() => {
-        const stored = localStorage.getItem('db_activities');
-        return stored ? JSON.parse(stored) : mockActivities;
-    });
-
-    const [importBatches, setImportBatches] = useState<ImportBatch[]>(() => {
-        const stored = localStorage.getItem('db_import_batches');
-        return stored ? JSON.parse(stored) : [];
-    });
-
-    // Save activities whenever they change
-    useEffect(() => {
-        localStorage.setItem('db_activities', JSON.stringify(activities));
-    }, [activities]);
-
-    // Save import batches whenever they change
-    useEffect(() => {
-        localStorage.setItem('db_import_batches', JSON.stringify(importBatches));
-    }, [importBatches]);
-    // --- PERSISTENCE LOGIC END ---
-
+    // Data States
+    const [users, setUsers] = useState<User[]>([]);
+    const [activities, setActivities] = useState<Activity[]>([]);
+    const [importBatches, setImportBatches] = useState<ImportBatch[]>([]);
     const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
-    const [currentView, setCurrentView] = useState<ViewType>('dashboard');
     
+    // UI States
+    const [user, setUser] = useState<User | null>(null);
+    const [loginError, setLoginError] = useState<string | undefined>();
+    const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+    const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+    const [viewingImage, setViewingImage] = useState<string | null>(null);
+    
+    // Import State
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
+    const [pendingImportData, setPendingImportData] = useState<any[]>([]);
+    const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
+    const [initialMapping, setInitialMapping] = useState<ImportMapping | undefined>(undefined);
+
     // Filters
     const [filters, setFilters] = useState<FilterType>({ 
         turno: 'all', 
@@ -80,24 +66,10 @@ const App: React.FC = () => {
         onlyMyActivities: false
     });
 
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-    const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
-    const [viewingImage, setViewingImage] = useState<string | null>(null);
-
-    // Import State
-    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-    const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
-    const [pendingImportData, setPendingImportData] = useState<any[]>([]);
-    const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
-    const [initialMapping, setInitialMapping] = useState<ImportMapping | undefined>(undefined);
-
-    // Status Customization State
+    // Status Customization
     const [statusLabels, setStatusLabels] = useState<Record<string, string>>(() => {
         const stored = localStorage.getItem('statusLabels');
         if (stored) return JSON.parse(stored);
-        
-        // Default Portuguese Labels
         return {
             [ActivityStatus.Open]: 'Aberto',
             [ActivityStatus.NaoExecutado]: 'Não Executado',
@@ -107,28 +79,154 @@ const App: React.FC = () => {
         };
     });
 
+    // --- SUPABASE DATA LOADING ---
+    useEffect(() => {
+        const loadData = async () => {
+            // 1. Load Users
+            const { data: usersData } = await supabase.from('app_users').select('*');
+            if (usersData && usersData.length > 0) {
+                // Map Supabase columns to User type
+                const mappedUsers: User[] = usersData.map(u => ({
+                    username: u.username,
+                    password: u.password,
+                    name: u.name,
+                    role: u.role as 'admin' | 'user',
+                    profilePicture: u.profile_picture,
+                    backgroundImage: u.background_image
+                }));
+                setUsers(mappedUsers);
+                
+                // Restore session
+                const storedUser = localStorage.getItem('currentUser');
+                if (storedUser) {
+                    const parsedUser = JSON.parse(storedUser);
+                    const freshUser = mappedUsers.find(u => u.username === parsedUser.username);
+                    if (freshUser) setUser(freshUser);
+                }
+            } else {
+                setUsers(mockUsers); // Fallback
+            }
+
+            // 2. Load Activities
+            const { data: actsData } = await supabase.from('activities').select('json_data');
+            if (actsData && actsData.length > 0) {
+                const loadedActs = actsData.map(row => row.json_data);
+                setActivities(loadedActs);
+            } else {
+                // If empty db, maybe use mock, but careful not to overwrite db later
+                // setActivities(mockActivities); 
+            }
+
+            // 3. Load Import Batches
+            const { data: batchData } = await supabase.from('import_batches').select('json_data');
+            if (batchData && batchData.length > 0) {
+                setImportBatches(batchData.map(row => row.json_data));
+            }
+        };
+
+        loadData();
+    }, []);
+
+    // --- PERSISTENCE HELPERS ---
+    
+    const saveActivityToSupabase = async (activity: Activity) => {
+        // Clean object to ensure no undefined values cause JSON issues (though Supabase handles jsonb well)
+        const cleanActivity = JSON.parse(JSON.stringify(activity));
+
+        const { error } = await supabase.from('activities').upsert({
+            id: activity.id,
+            json_data: cleanActivity
+        });
+        if (error) {
+            console.error('Error saving activity:', error.message, error.details);
+        }
+    };
+
+    const deleteActivityFromSupabase = async (id: string) => {
+        const { error } = await supabase.from('activities').delete().eq('id', id);
+        if (error) console.error('Error deleting activity:', error.message);
+    };
+
+    const saveUserToSupabase = async (u: User) => {
+        const dbUser = {
+            username: u.username,
+            password: u.password,
+            name: u.name,
+            role: u.role,
+            profile_picture: u.profilePicture,
+            background_image: u.backgroundImage
+        };
+        const { error } = await supabase.from('app_users').upsert(dbUser);
+        if (error) console.error('Error saving user:', error.message);
+    };
+
+    const saveBatchToSupabase = async (batch: ImportBatch) => {
+        const cleanBatch = JSON.parse(JSON.stringify(batch));
+        const { error } = await supabase.from('import_batches').upsert({
+            id: batch.id,
+            json_data: cleanBatch
+        });
+        if (error) console.error('Error saving batch:', error.message);
+    };
+
+    const deleteBatchFromSupabase = async (batchId: string) => {
+         const { error } = await supabase.from('import_batches').delete().eq('id', batchId);
+         if (error) console.error('Error deleting batch:', error.message);
+    };
+
+
+    // --- FILE UPLOAD HELPER ---
+    
+    const fileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = error => reject(error);
+        });
+    };
+
+    const uploadFileToSupabase = async (file: File): Promise<string | null> => {
+        try {
+            // Try uploading to Supabase Storage
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+            const filePath = `${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('app-files')
+                .upload(filePath, file);
+
+            if (uploadError) {
+                // Check specifically for "Bucket not found" or other config errors
+                if (uploadError.message.includes('Bucket not found') || (uploadError as any).error === 'Bucket not found') {
+                    console.warn("Bucket 'app-files' not found. Falling back to Base64 encoding.");
+                    // Fallback: Convert to Base64 and return that as the URL
+                    return await fileToBase64(file);
+                }
+                throw uploadError;
+            }
+
+            const { data } = supabase.storage.from('app-files').getPublicUrl(filePath);
+            return data.publicUrl;
+        } catch (error: any) {
+            console.error('Error uploading file (falling back to local):', error.message || error);
+            try {
+                 return await fileToBase64(file);
+            } catch (e) {
+                console.error("Base64 conversion failed", e);
+                return null;
+            }
+        }
+    };
+
+
     useEffect(() => {
         const root = window.document.documentElement;
         root.classList.remove(theme === 'light' ? 'dark' : 'light');
         root.classList.add(theme);
         localStorage.setItem('theme', theme);
     }, [theme]);
-
-    useEffect(() => {
-        localStorage.setItem('db_users_secure', JSON.stringify(users));
-    }, [users]);
-
-    useEffect(() => {
-        if (user) {
-            const updatedCurrentUser = users.find(u => u.username === user.username);
-            if (updatedCurrentUser) {
-                localStorage.setItem('currentUser', JSON.stringify(updatedCurrentUser));
-                if (JSON.stringify(updatedCurrentUser) !== JSON.stringify(user)) {
-                    setUser(updatedCurrentUser);
-                }
-            }
-        }
-    }, [users]);
 
     useEffect(() => {
         localStorage.setItem('statusLabels', JSON.stringify(statusLabels));
@@ -159,7 +257,7 @@ const App: React.FC = () => {
         }
     };
 
-    const handleRegister = (newUser: User) => {
+    const handleRegister = async (newUser: User) => {
         if (users.some(u => u.username.toLowerCase() === newUser.username.toLowerCase())) {
             setLoginError('Nome de usuário já existe.');
             return;
@@ -170,6 +268,8 @@ const App: React.FC = () => {
         setLoginError(undefined);
         localStorage.setItem('currentUser', JSON.stringify(newUser));
         setFilters(prev => ({ ...prev, onlyMyActivities: true }));
+        
+        await saveUserToSupabase(newUser);
     };
 
     const handleRecoverPassword = (username: string, name: string, newPassword: string): boolean => {
@@ -179,9 +279,12 @@ const App: React.FC = () => {
         );
         if (userIndex !== -1) {
             const updatedUsers = [...users];
-            updatedUsers[userIndex] = { ...updatedUsers[userIndex], password: newPassword };
+            const updatedUser = { ...updatedUsers[userIndex], password: newPassword };
+            updatedUsers[userIndex] = updatedUser;
             setUsers(updatedUsers);
             setLoginError(undefined);
+            
+            saveUserToSupabase(updatedUser);
             return true;
         }
         return false;
@@ -198,42 +301,42 @@ const App: React.FC = () => {
         setFilters(prev => ({ ...prev, onlyMyActivities: false }));
     };
 
-    const handleBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // --- UPDATED UPLOAD HANDLERS USING SUPABASE (WITH FALLBACK) ---
+
+    const handleBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0] && user) {
             const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const result = event.target?.result as string;
-                const updatedUsers = users.map(u => 
-                    u.username === user.username ? { ...u, backgroundImage: result } : u
-                );
-                setUsers(updatedUsers);
-            };
-            reader.readAsDataURL(file);
+            const publicUrl = await uploadFileToSupabase(file);
+            
+            if (publicUrl) {
+                const updatedUser = { ...user, backgroundImage: publicUrl };
+                setUser(updatedUser);
+                setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
+                await saveUserToSupabase(updatedUser);
+            }
         }
     };
 
-    const handleRemoveBackground = () => {
+    const handleRemoveBackground = async () => {
         if (user) {
-             const updatedUsers = users.map(u => 
-                u.username === user.username ? { ...u, backgroundImage: undefined } : u
-            );
-            setUsers(updatedUsers);
+             const updatedUser = { ...user, backgroundImage: undefined };
+             setUser(updatedUser);
+             setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
+             await saveUserToSupabase(updatedUser);
         }
     };
 
-    const handleProfilePictureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0] && user) {
             const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const result = event.target?.result as string;
-                const updatedUsers = users.map(u => 
-                    u.username === user.username ? { ...u, profilePicture: result } : u
-                );
-                setUsers(updatedUsers);
-            };
-            reader.readAsDataURL(file);
+            const publicUrl = await uploadFileToSupabase(file);
+
+            if (publicUrl) {
+                const updatedUser = { ...user, profilePicture: publicUrl };
+                setUser(updatedUser);
+                setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
+                await saveUserToSupabase(updatedUser);
+            }
         }
     };
 
@@ -298,31 +401,46 @@ const App: React.FC = () => {
         return generated;
     };
 
-    const handleAddActivity = (activity: Omit<Activity, 'id'>, recurrenceLimit?: Date) => {
-        const activitiesToAdd: Omit<Activity, 'id'>[] = [activity];
+    const handleAddActivity = async (activityData: Omit<Activity, 'id'>, recurrenceLimit?: Date) => {
+        // Construct Activity
+        const activity: Activity = {
+            ...activityData,
+            id: `act_${Date.now()}_0`,
+        };
+
+        const activitiesToAdd: Activity[] = [activity];
         
         // Check for recurrence generation
         if (recurrenceLimit && activity.periodicidade !== Recorrencia.NaoHa) {
-            const futureActivities = generateRecurringActivities(activity, recurrenceLimit);
-            activitiesToAdd.push(...futureActivities);
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { id, ...rest } = activity;
+            const futureActivities = generateRecurringActivities(rest, recurrenceLimit);
+            
+            futureActivities.forEach((act, index) => {
+                 activitiesToAdd.push({
+                     ...act,
+                     id: `act_${Date.now()}_${index + 1}`
+                 });
+            });
         }
 
-        const newActivities: Activity[] = activitiesToAdd.map((act, index) => ({
-            ...act,
-            id: `act_${Date.now()}_${index}`,
-        }));
+        setActivities(prev => [...prev, ...activitiesToAdd]);
+        
+        // Save to Supabase
+        for (const act of activitiesToAdd) {
+            await saveActivityToSupabase(act);
+        }
 
-        setActivities(prev => [...prev, ...newActivities]);
-        addAuditLog("CRIAR", `Criou ${newActivities.length} atividades (${activity.tag})`, newActivities[0].id);
+        addAuditLog("CRIAR", `Criou ${activitiesToAdd.length} atividades (${activity.tag})`, activity.id);
     };
 
-    const handleUpdateActivity = (updatedActivity: Activity, recurrenceLimit?: Date) => {
-        // Update the original activity
+    const handleUpdateActivity = async (updatedActivity: Activity, recurrenceLimit?: Date) => {
+        // Update the original activity locally
         setActivities(prev => prev.map(act => act.id === updatedActivity.id ? updatedActivity : act));
+        await saveActivityToSupabase(updatedActivity);
         
-        // Handle recurrence on edit: only generate NEW instances if requested, does not update existing ones linked
+        // Handle recurrence on edit
         if (recurrenceLimit && updatedActivity.periodicidade !== Recorrencia.NaoHa) {
-             // We strip the ID to treat it as a template
              // eslint-disable-next-line @typescript-eslint/no-unused-vars
              const { id, ...activityTemplate } = updatedActivity;
              const futureActivities = generateRecurringActivities(activityTemplate, recurrenceLimit);
@@ -333,6 +451,11 @@ const App: React.FC = () => {
                     id: `act_gen_${Date.now()}_${index}`,
                 }));
                 setActivities(prev => [...prev, ...newInstances]);
+                
+                for (const act of newInstances) {
+                    await saveActivityToSupabase(act);
+                }
+
                 alert(`Foram geradas mais ${newInstances.length} recorrências até a data selecionada.`);
                 addAuditLog("RECORRENCIA", `Gerou ${newInstances.length} recorrências ao editar ${updatedActivity.tag}`);
              }
@@ -342,10 +465,12 @@ const App: React.FC = () => {
         addAuditLog("EDITAR", `Editou detalhes da atividade ${updatedActivity.tag}`, updatedActivity.id);
     };
     
-    const handleUpdateStatus = (activityId: string, status: ActivityStatus) => {
+    const handleUpdateStatus = async (activityId: string, status: ActivityStatus) => {
         const activity = activities.find(a => a.id === activityId);
         if (activity) {
-            setActivities(prev => prev.map(act => act.id === activityId ? {...act, status} : act));
+            const updatedActivity = { ...activity, status };
+            setActivities(prev => prev.map(act => act.id === activityId ? updatedActivity : act));
+            await saveActivityToSupabase(updatedActivity);
             addAuditLog("STATUS", `Alterou status de ${activity.tag} para ${status}`, activityId);
         }
     };
@@ -365,10 +490,11 @@ const App: React.FC = () => {
     };
 
     const handleSaveSettings = () => {
-        // Logic handled by useEffect, just provide feedback
         alert("Configurações salvas com sucesso!");
         setIsSettingsModalOpen(false);
     };
+
+    // --- IMPORT LOGIC ---
 
     const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -405,31 +531,24 @@ const App: React.FC = () => {
         event.target.value = '';
     };
 
-    const handleImportConfirm = (mapping: ImportMapping) => {
+    const handleImportConfirm = async (mapping: ImportMapping) => {
         const parseExcelTime = (timeValue: any, referenceDate: Date = new Date()): Date => {
             const resultDate = new Date(referenceDate);
             
             if (timeValue instanceof Date) {
-                // SheetJS dates can be 1899-based for pure times. 
-                // Check if year is less than 1905 (Excel epoch is 1899)
                 if (timeValue.getFullYear() < 1905) {
-                    // It's a time-only value (e.g. "08:00"). Use UTC getters to avoid timezone shift
                     resultDate.setHours(timeValue.getUTCHours(), timeValue.getUTCMinutes(), timeValue.getUTCSeconds(), 0);
                     return resultDate;
                 } else {
-                    // It's a full date (e.g. "2025-08-01 08:00"). Use it directly!
                     return new Date(timeValue);
                 }
             }
             
             if (typeof timeValue === 'string') {
-                // Try parsing as ISO date first
                 const timestamp = Date.parse(timeValue);
                 if (!isNaN(timestamp)) {
                     return new Date(timestamp);
                 }
-
-                // Fallback: "HH:MM" string
                 if (timeValue.includes(':')) {
                     const [hours, minutes] = timeValue.split(':').map(Number);
                     if (!isNaN(hours) && !isNaN(minutes)) {
@@ -439,7 +558,6 @@ const App: React.FC = () => {
                 }
             }
             
-            // Excel decimal time (e.g., 0.5 = 12:00)
             if (typeof timeValue === 'number') {
                  const totalSeconds = Math.round(timeValue * 86400);
                  const hours = Math.floor(totalSeconds / 3600);
@@ -451,17 +569,19 @@ const App: React.FC = () => {
             return resultDate;
         };
 
-        // Determine Batch ID (either new or reusing if editing)
         const batchId = editingBatchId || String(Date.now());
 
-        // If editing, first remove the old activities from this batch
+        // If editing, remove old first
         let currentActivities = [...activities];
         if (editingBatchId) {
+            const toRemove = currentActivities.filter(act => act.id.startsWith(`imported_${editingBatchId}_`));
+            // Parallel delete could be better, but simple loop for now
+            toRemove.forEach(act => deleteActivityFromSupabase(act.id));
             currentActivities = currentActivities.filter(act => !act.id.startsWith(`imported_${editingBatchId}_`));
         }
 
         const newActivities: Activity[] = pendingImportData.map((row, index) => {
-            const getValue = (key: string) => row[key] || '';
+            const getValue = (key?: string) => key ? (row[key] || '') : '';
             
             const criticidadeValue = (String(getValue(mapping.criticidade) || 'normal').toLowerCase()) as Criticidade;
             const validCriticidade = Object.values(Criticidade).includes(criticidadeValue) ? criticidadeValue : Criticidade.Normal;
@@ -475,16 +595,25 @@ const App: React.FC = () => {
                     .join(' / ');
             }
 
-            // --- CRITICAL: Duration & Date Logic ---
-            
-            // 1. Determine Duration First
+            let referenceDate = new Date(); 
+            if (mapping.data) {
+                const rawDate = getValue(mapping.data);
+                if (rawDate) {
+                     if (rawDate instanceof Date) {
+                        referenceDate = rawDate;
+                     } else {
+                        const d = new Date(rawDate);
+                        if (!isNaN(d.getTime())) referenceDate = d;
+                     }
+                }
+            }
+
             let duracaoString = '';
             let durationMinutes = 0;
 
             if (mapping.duracao) {
                 const rawDuration = getValue(mapping.duracao);
                 if (rawDuration) {
-                     // Excel decimal (e.g. 0.04166 for 1h)
                      if (typeof rawDuration === 'number') {
                          const totalMinutes = Math.round(rawDuration * 24 * 60);
                          durationMinutes = totalMinutes;
@@ -492,7 +621,6 @@ const App: React.FC = () => {
                          const m = totalMinutes % 60;
                          duracaoString = `${h}:${m.toString().padStart(2, '0')}`;
                      } 
-                     // String HH:MM or decimal string
                      else if (typeof rawDuration === 'string') {
                          if (rawDuration.includes(':')) {
                             const [h, m] = rawDuration.split(':').map(Number);
@@ -510,43 +638,30 @@ const App: React.FC = () => {
                 }
             }
 
-            // 2. Parse Start Date
             const rawStart = getValue(mapping.horaInicio);
-            const startDate = parseExcelTime(rawStart);
+            const startDate = parseExcelTime(rawStart, referenceDate);
 
-            // 3. Determine End Date & Duration
-            // If we have a valid mapped duration, FORCE the End Date to match: Start + Duration.
-            // This ensures mathematical consistency.
-            
             let endDate: Date;
 
             if (durationMinutes > 0) {
-                // Recalculate End Date from Duration
                 endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
             } else {
-                // No mapped duration, try to parse End Date from Excel
                 const rawEnd = getValue(mapping.horaFim);
-                
                 if (rawEnd) {
-                     endDate = parseExcelTime(rawEnd);
+                     endDate = parseExcelTime(rawEnd, referenceDate);
                 } else {
-                     // Fallback: Start + 1h
                      endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
                 }
                 
-                // Fix common issues where End <= Start (e.g. time wrapping 23:00 -> 01:00)
                 if (endDate.getTime() <= startDate.getTime()) {
-                     // If exactly equal, add 1 hour (common data entry error)
                      if (endDate.getTime() === startDate.getTime()) {
                          endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
                      } 
-                     // If End < Start (e.g. 01:00 < 23:00), add 1 day
                      else if (startDate.toDateString() === endDate.toDateString()) { 
                         endDate.setDate(endDate.getDate() + 1);
                      }
                 }
 
-                // Calculate Duration from Dates since we didn't have one mapped
                 const diffMs = endDate.getTime() - startDate.getTime();
                 const diffHours = Math.floor(diffMs / 3600000);
                 const diffMinutes = Math.floor((diffMs % 3600000) / 60000);
@@ -580,10 +695,13 @@ const App: React.FC = () => {
             };
         }).filter(act => act.descricao && act.descricao !== 'N/A');
 
-        // Update Activities
         setActivities([...currentActivities, ...newActivities]);
+        
+        // Save ALL new imported activities to Supabase
+        for (const act of newActivities) {
+            await saveActivityToSupabase(act);
+        }
 
-        // Update or Create Import Batch Record
         const newBatch: ImportBatch = {
             id: batchId,
             date: new Date().toISOString(),
@@ -594,10 +712,10 @@ const App: React.FC = () => {
         };
 
         setImportBatches(prev => {
-            // Remove existing if editing, then add new
             const filtered = prev.filter(b => b.id !== batchId);
             return [newBatch, ...filtered];
         });
+        await saveBatchToSupabase(newBatch);
 
         addAuditLog(editingBatchId ? "EDITAR_IMPORT" : "IMPORTAR", 
             editingBatchId 
@@ -605,7 +723,6 @@ const App: React.FC = () => {
                 : `Importou ${newActivities.length} atividades`
         );
 
-        // Reset State
         setIsImportModalOpen(false);
         setPendingImportData([]);
         setEditingBatchId(null);
@@ -613,12 +730,23 @@ const App: React.FC = () => {
         alert(`${newActivities.length} atividades ${editingBatchId ? 'atualizadas' : 'importadas'} com sucesso!`);
     };
 
-    const handleDeleteImportBatch = (batchId: string) => {
+    const handleDeleteImportBatch = async (batchId: string) => {
         if (window.confirm("Tem certeza que deseja excluir todas as atividades desta importação?")) {
-            // Use startsWith to specifically target activities from this batch
             const prefix = `imported_${batchId}_`;
+            
+            // 1. Find IDs to delete
+            const idsToDelete = activities.filter(act => act.id.startsWith(prefix)).map(a => a.id);
+            
+            // 2. Update Local State
             setActivities(prev => prev.filter(act => !act.id.startsWith(prefix)));
             setImportBatches(prev => prev.filter(b => b.id !== batchId));
+            
+            // 3. Delete from Supabase
+            for (const id of idsToDelete) {
+                await deleteActivityFromSupabase(id);
+            }
+            await deleteBatchFromSupabase(batchId);
+
             addAuditLog("EXCLUIR", `Excluiu lote de importação ${new Date(parseInt(batchId)).toLocaleString()}`);
         }
     };
@@ -631,7 +759,7 @@ const App: React.FC = () => {
         setExcelHeaders(batch.headers);
         setEditingBatchId(batchId);
         setInitialMapping(batch.mapping);
-        setIsSettingsModalOpen(false); // Close settings to show import modal
+        setIsSettingsModalOpen(false);
         setIsImportModalOpen(true);
     };
 
@@ -642,7 +770,6 @@ const App: React.FC = () => {
             const supervisorMatch = filters.supervisor === 'all' || (activity.supervisor || '') === filters.supervisor;
             const idMpMatch = !filters.idMp || (activity.idMp === filters.idMp);
             
-            // UPDATED: Check if user is Responsavel OR Supervisor
             const myActivitiesMatch = !filters.onlyMyActivities || (
                 user && (
                     activity.responsavel.toLowerCase().includes(user.name.toLowerCase()) ||
@@ -683,7 +810,6 @@ const App: React.FC = () => {
         return <LoginView onLogin={handleLogin} onRegister={handleRegister} onRecoverPassword={handleRecoverPassword} onRecoverUsername={handleRecoverUsername} error={loginError} />;
     }
 
-    // Background Priority: User > Local File (Default) > Fallback URL
     const userBackground = user.backgroundImage;
     const backgroundStyle = userBackground 
         ? { backgroundImage: `url("${userBackground}")` }
@@ -711,12 +837,10 @@ const App: React.FC = () => {
                 onOpenSettings={() => setIsSettingsModalOpen(true)}
             />
 
-            {/* Main Content */}
             <main className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto relative z-10">
                 {renderView()}
             </main>
             
-            {/* Floating Action Button */}
             <button
                 onClick={openCreateModal}
                 className="fixed bottom-8 right-8 bg-primary-600 hover:bg-primary-700 text-white rounded-full p-4 shadow-lg transition-transform transform hover:scale-110 focus:outline-none z-50"
@@ -724,7 +848,6 @@ const App: React.FC = () => {
                 <PlusIcon className="w-8 h-8" />
             </button>
 
-            {/* Import Mapping Modal */}
             <ImportMappingModal 
                 isOpen={isImportModalOpen} 
                 onClose={() => setIsImportModalOpen(false)} 
@@ -733,10 +856,8 @@ const App: React.FC = () => {
                 initialMapping={initialMapping}
             />
 
-            {/* Settings Modal */}
             <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="Configurações do Sistema">
                 <div className="space-y-8">
-                    {/* Profile Picture */}
                     <div className="pb-6 border-b border-gray-200 dark:border-gray-700">
                         <h3 className="text-lg font-medium mb-4 text-gray-800 dark:text-white">Foto de Perfil</h3>
                         <div className="flex items-center space-x-4">
@@ -750,7 +871,6 @@ const App: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Background */}
                     <div className="pb-6 border-b border-gray-200 dark:border-gray-700">
                         <h3 className="text-lg font-medium mb-4 text-gray-800 dark:text-white">Imagem de Fundo</h3>
                         <div className="flex items-center space-x-4">
@@ -762,7 +882,6 @@ const App: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Import Management - Highlighted */}
                     <div className="pb-6 border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
                         <h3 className="text-lg font-bold mb-2 text-gray-900 dark:text-white">Gerenciar Importações</h3>
                         <p className="text-xs text-gray-600 dark:text-gray-300 mb-4">
@@ -770,7 +889,7 @@ const App: React.FC = () => {
                         </p>
 
                         {importBatches.length === 0 ? (
-                            <p className="text-sm text-gray-500">Nenhuma importação registrada nesta sessão.</p>
+                            <p className="text-sm text-gray-500">Nenhuma importação registrada.</p>
                         ) : (
                             <ul className="space-y-2 max-h-40 overflow-y-auto">
                                 {importBatches.map((batch) => (
@@ -806,7 +925,6 @@ const App: React.FC = () => {
                         )}
                     </div>
 
-                    {/* Status Names */}
                     <div className="pb-6 border-b border-gray-200 dark:border-gray-700">
                         <h3 className="text-lg font-medium mb-4 text-gray-800 dark:text-white">Nomes dos Status</h3>
                         <div className="grid gap-4">

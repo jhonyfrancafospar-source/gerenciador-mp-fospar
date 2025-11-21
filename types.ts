@@ -108,6 +108,7 @@ export interface ImportMapping {
     supervisor: string; // Mapped from Responsavel in previous logic
     area: string;
     turno: string;
+    data?: string; // Separate Date column
     horaInicio: string;
     horaFim: string;
     duracao: string; // Explicit duration mapping
