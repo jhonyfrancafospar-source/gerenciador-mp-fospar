@@ -31,6 +31,7 @@ interface HeaderProps {
     user: User | null;
     onLogout: () => void;
     onOpenSettings: () => void;
+    isOnline?: boolean;
 }
 
 const NavButton: React.FC<{
@@ -67,6 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
     user,
     onLogout,
     onOpenSettings,
+    isOnline = true,
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -79,10 +81,14 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="container mx-auto">
                 <div className="flex flex-col xl:flex-row justify-between items-center space-y-4 xl:space-y-0 mb-4">
                     <div className="flex items-center space-x-3">
-                        <div className="h-10 flex items-center">
+                        <div className="h-10 flex items-center space-x-2">
                             <h1 className="text-2xl font-bold text-gray-800 dark:text-white tracking-tight">
                                 Gerenciador MP
                             </h1>
+                            <div 
+                                title={isOnline ? "Banco de Dados Conectado" : "Modo Offline (Local)"}
+                                className={`w-3 h-3 rounded-full ${isOnline ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.6)]' : 'bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.6)]'}`}
+                            ></div>
                         </div>
                     </div>
                     <nav className="flex items-center space-x-1 p-1 bg-gray-100 dark:bg-gray-900 rounded-lg overflow-x-auto max-w-full no-scrollbar">

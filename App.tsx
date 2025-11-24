@@ -60,6 +60,9 @@ const App: React.FC = () => {
     const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
     const [viewingImage, setViewingImage] = useState<string | null>(null);
     
+    // Connection Status
+    const [isSupabaseConnected, setIsSupabaseConnected] = useState(true);
+
     // Import State
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
@@ -89,8 +92,7 @@ const App: React.FC = () => {
         };
     });
 
-    // --- LOCAL STORAGE PERSISTENCE (Backup) ---
-    // We keep this to ensure the app works even if Supabase is down or not configured yet.
+    // --- LOCAL STORAGE PERSISTENCE (Backup/Offline Mode) ---
     useEffect(() => {
         localStorage.setItem('db_users', JSON.stringify(users));
     }, [users]);
@@ -105,52 +107,29 @@ const App: React.FC = () => {
 
 
     // --- SUPABASE DATA LOADING ---
-    const logMissingTablesError = () => {
-        console.warn(`
-        ⚠️ ERRO: Tabelas do Supabase não encontradas.
-        
-        Para corrigir, execute o seguinte SQL no Editor do Supabase:
-
-        create table if not exists app_users (
-          username text primary key,
-          password text not null,
-          name text,
-          role text,
-          profile_picture text,
-          background_image text
-        );
-
-        create table if not exists activities (
-          id text primary key,
-          json_data jsonb
-        );
-
-        create table if not exists import_batches (
-          id text primary key,
-          json_data jsonb
-        );
-
-        insert into storage.buckets (id, name, public) values ('app-files', 'app-files', true) on conflict do nothing;
-        create policy "Public Access" on storage.objects for all using ( bucket_id = 'app-files' );
-        `);
-    };
-
     useEffect(() => {
         const loadData = async () => {
-            console.log("Conectando ao Supabase...");
+            console.log("Tentando conectar ao Supabase...");
             
             // 1. Load Users
             const { data: usersData, error: usersError } = await supabase.from('app_users').select('*');
             
             if (usersError) {
-                console.error("Erro ao carregar usuários do Supabase:", usersError.message);
-                if (usersError.message.includes('relation "public.app_users" does not exist') || usersError.message.includes('Could not find the table')) {
-                    logMissingTablesError();
+                // Detect missing tables error
+                if (usersError.message.includes('relation "public.app_users" does not exist') || 
+                    usersError.message.includes('Could not find the table')) {
+                    console.warn("Supabase não configurado (Tabelas inexistentes). Ativando Modo Offline.");
+                    setIsSupabaseConnected(false);
+                    // Stop trying to load other tables
+                    if (users.length === 0) setUsers(mockUsers);
+                    return; 
+                } else {
+                    console.error("Erro ao carregar usuários do Supabase:", usersError.message);
                 }
-                // Fallback: If no users loaded from Supabase AND no local users, use Mock
+                // Fallback
                 if (users.length === 0) setUsers(mockUsers);
             } else if (usersData && usersData.length > 0) {
-                // Success: Use Supabase users as the source of truth
+                setIsSupabaseConnected(true);
                 const mappedUsers: User[] = usersData.map(u => ({
                     username: u.username,
                     password: u.password,
@@ -161,30 +140,26 @@ const App: React.FC = () => {
                 }));
                 setUsers(mappedUsers);
                 
-                // Refresh current user session from the fresh data
+                // Refresh current user session
                 const storedUserStr = localStorage.getItem('currentUser');
                 if (storedUserStr) {
                     const storedUser = JSON.parse(storedUserStr);
                     const freshUser = mappedUsers.find(u => u.username === storedUser.username);
-                    if (freshUser) {
-                        setUser(freshUser);
-                        // Update background immediately if it changed in the cloud
-                        if (freshUser.backgroundImage !== storedUser.backgroundImage) {
-                            // Trigger re-render logic handled by 'user' state
-                        }
-                    } else {
-                        setUser(storedUser); // Fallback
-                    }
+                    if (freshUser) setUser(freshUser);
+                    else setUser(storedUser);
                 }
             } else if (users.length === 0) {
-                 // Supabase connected but empty table
                  setUsers(mockUsers);
             }
             
+            if (!isSupabaseConnected) return;
+
             // 2. Load Activities
             const { data: actsData, error: actsError } = await supabase.from('activities').select('json_data');
             if (actsError) {
-                 console.error("Erro ao carregar atividades:", actsError.message);
+                 if (!actsError.message.includes('Could not find the table')) {
+                    console.error("Erro ao carregar atividades:", actsError.message);
+                 }
             } else if (actsData && actsData.length > 0) {
                 const loadedActs = actsData.map(row => row.json_data);
                 setActivities(loadedActs);
@@ -193,7 +168,9 @@ const App: React.FC = () => {
             // 3. Load Import Batches
             const { data: batchData, error: batchError } = await supabase.from('import_batches').select('json_data');
              if (batchError) {
-                 console.error("Erro ao carregar lotes:", batchError.message);
+                 if (!batchError.message.includes('Could not find the table')) {
+                    console.error("Erro ao carregar lotes:", batchError.message);
+                 }
             } else if (batchData && batchData.length > 0) {
                 setImportBatches(batchData.map(row => row.json_data));
             }
@@ -205,6 +182,7 @@ const App: React.FC = () => {
     // --- PERSISTENCE HELPERS ---
     
     const saveActivityToSupabase = async (activity: Activity) => {
+        if (!isSupabaseConnected) return;
         try {
             const cleanActivity = JSON.parse(JSON.stringify(activity));
             const { error } = await supabase.from('activities').upsert({
@@ -220,6 +198,7 @@ const App: React.FC = () => {
     };
 
     const deleteActivityFromSupabase = async (id: string) => {
+        if (!isSupabaseConnected) return;
         try {
             const { error } = await supabase.from('activities').delete().eq('id', id);
             if (error && !error.message.includes('Could not find the table')) console.error('Error deleting activity:', error.message);
@@ -227,6 +206,7 @@ const App: React.FC = () => {
     };
 
     const saveUserToSupabase = async (u: User) => {
+        if (!isSupabaseConnected) return;
         try {
             const dbUser = {
                 username: u.username,
@@ -237,16 +217,14 @@ const App: React.FC = () => {
                 background_image: u.backgroundImage
             };
             const { error } = await supabase.from('app_users').upsert(dbUser);
-            if (error) {
-                if (error.message.includes('Could not find the table')) logMissingTablesError();
-                else console.error('Error saving user:', error.message);
-            } else {
-                console.log("User saved to Supabase:", u.username);
+            if (error && !error.message.includes('Could not find the table')) {
+                console.error('Error saving user:', error.message);
             }
         } catch (e) {}
     };
 
     const saveBatchToSupabase = async (batch: ImportBatch) => {
+        if (!isSupabaseConnected) return;
         try {
             const cleanBatch = JSON.parse(JSON.stringify(batch));
             const { error } = await supabase.from('import_batches').upsert({
@@ -258,6 +236,7 @@ const App: React.FC = () => {
     };
 
     const deleteBatchFromSupabase = async (batchId: string) => {
+         if (!isSupabaseConnected) return;
          try {
             const { error } = await supabase.from('import_batches').delete().eq('id', batchId);
             if (error && !error.message.includes('Could not find the table')) console.error('Error deleting batch:', error.message);
@@ -277,6 +256,11 @@ const App: React.FC = () => {
     };
 
     const uploadFileToSupabase = async (file: File, folder: string = 'uploads'): Promise<string | null> => {
+        // If offline or table missing, use Base64 immediately
+        if (!isSupabaseConnected) {
+            return await fileToBase64(file);
+        }
+
         try {
             // Sanitize filename
             const fileExt = file.name.split('.').pop();
@@ -297,17 +281,16 @@ const App: React.FC = () => {
                 if (uploadError.message.includes('Bucket not found') || 
                     (uploadError as any).error === 'Bucket not found' ||
                     uploadError.message.includes('Could not find the table')) {
-                    console.warn("Bucket not found. Using Base64 fallback.");
+                    console.warn("Storage não configurado. Usando Base64 local.");
                     return await fileToBase64(file);
                 }
                 throw uploadError;
             }
 
             const { data } = supabase.storage.from('app-files').getPublicUrl(filePath);
-            console.log("Upload successful:", data.publicUrl);
             return data.publicUrl;
         } catch (error: any) {
-            console.warn('Upload failed (using fallback):', error.message || error);
+            console.warn('Upload falhou (usando fallback):', error.message || error);
             try {
                  return await fileToBase64(file);
             } catch (e) {
@@ -925,6 +908,7 @@ const App: React.FC = () => {
                 user={user}
                 onLogout={handleLogout}
                 onOpenSettings={() => setIsSettingsModalOpen(true)}
+                isOnline={isSupabaseConnected}
             />
 
             <main className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto relative z-10">

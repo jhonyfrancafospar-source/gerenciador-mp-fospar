@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import type { Activity, Attachment } from '../types';
 import { ActivityStatus, Criticidade, Recorrencia } from '../types';
@@ -14,6 +15,7 @@ interface ActivityFormProps {
 
 const initialFormState: Omit<Activity, 'id' | 'horaInicioReal' | 'horaFimReal'> & { horaInicioReal?: string; horaFimReal?: string } = {
     tag: '',
+    idMp: '',
     tipo: 'PLANO',
     periodicidade: Recorrencia.NaoHa,
     area: '',
@@ -113,7 +115,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
-            const files = Array.from(e.target.files);
+            const files = Array.from(e.target.files) as File[];
             
             for (const file of files) {
                 let url: string | null = null;
@@ -182,6 +184,14 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                     <textarea name="observacoes" value={formData.observacoes || ''} onChange={handleChange} className={inputClasses} rows={2}/>
                 </div>
                  <div>
+                    <label className="block text-sm font-medium">ID MP</label>
+                    <input type="text" name="idMp" value={formData.idMp || ''} onChange={handleChange} className={inputClasses} placeholder="Ex: MP GR 01-08" />
+                </div>
+                 <div>
+                    <label className="block text-sm font-medium">TAG</label>
+                    <input type="text" name="tag" value={formData.tag} onChange={handleChange} required className={inputClasses} />
+                </div>
+                 <div>
                     <label className="block text-sm font-medium">Responsável</label>
                     <input type="text" name="responsavel" value={formData.responsavel} onChange={handleChange} required className={inputClasses} />
                 </div>
@@ -189,10 +199,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                     <label className="block text-sm font-medium">Supervisor</label>
                     <input type="text" name="supervisor" value={formData.supervisor || ''} onChange={handleChange} className={inputClasses} />
                 </div>
-                <div>
-                    <label className="block text-sm font-medium">TAG</label>
-                    <input type="text" name="tag" value={formData.tag} onChange={handleChange} required className={inputClasses} />
-                </div>
+                
                 <div>
                     <label className="block text-sm font-medium">Status</label>
                      <select name="status" value={formData.status} onChange={handleChange} className={inputClasses}>
