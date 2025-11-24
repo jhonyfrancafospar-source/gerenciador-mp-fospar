@@ -7,9 +7,10 @@ interface ActivityCalendarViewProps {
     activities: Activity[];
     onEdit: (activity: Activity) => void;
     customStatusLabels?: Record<string, string>;
+    onDateChange: (activityId: string, newDate: Date) => void;
 }
 
-export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ activities, onEdit, customStatusLabels = {} }) => {
+export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ activities, onEdit, customStatusLabels = {}, onDateChange }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
 
     const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -43,6 +44,24 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
         }
     });
 
+    const handleDragStart = (e: React.DragEvent, id: string) => {
+        e.dataTransfer.setData("text/plain", id);
+        e.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault(); // Necessary to allow dropping
+    };
+
+    const handleDrop = (e: React.DragEvent, day: number) => {
+        e.preventDefault();
+        const id = e.dataTransfer.getData("text/plain");
+        if (id) {
+            const targetDate = new Date(year, month, day);
+            onDateChange(id, targetDate);
+        }
+    };
+
     // Grid generation
     const days = [];
     // Empty cells for days before the first of the month
@@ -60,7 +79,12 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
         const dayActivities = activitiesByDay[day] || [];
 
         days.push(
-            <div key={day} className={`min-h-[120px] border-r border-b border-gray-200 dark:border-gray-700 p-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30 ${isToday ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-white/80 dark:bg-gray-800/80'}`}>
+            <div 
+                key={day} 
+                className={`min-h-[120px] border-r border-b border-gray-200 dark:border-gray-700 p-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30 ${isToday ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-white/80 dark:bg-gray-800/80'}`}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, day)}
+            >
                 <div className="flex justify-between items-center mb-2">
                     <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300'}`}>
                         {day}
@@ -74,8 +98,10 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
                     {dayActivities.map(act => (
                         <div 
                             key={act.id}
-                            onClick={() => onEdit(act)}
-                            className={`text-[10px] px-1.5 py-1 rounded cursor-pointer truncate border-l-2 shadow-sm hover:opacity-80 ${getStatusClasses(act.status, false).replace('text-xs', '').replace('font-bold', 'font-medium').replace('uppercase', '')}`}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, act.id)}
+                            onClick={(e) => { e.stopPropagation(); onEdit(act); }}
+                            className={`text-[10px] px-1.5 py-1 rounded cursor-grab active:cursor-grabbing truncate border-l-2 shadow-sm hover:opacity-80 ${getStatusClasses(act.status, false).replace('text-xs', '').replace('font-bold', 'font-medium').replace('uppercase', '')}`}
                             title={`${act.tag} - ${act.descricao}`}
                         >
                             <span className="font-bold mr-1">{new Date(act.horaInicio).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>

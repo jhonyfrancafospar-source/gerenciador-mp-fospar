@@ -557,6 +557,55 @@ const App: React.FC = () => {
         }
     };
 
+    const handleActivityDateChange = async (activityId: string, newDate: Date) => {
+        const activity = activities.find(a => a.id === activityId);
+        if (!activity) return;
+
+        const oldStart = new Date(activity.horaInicio);
+        const oldEnd = new Date(activity.horaFim);
+        const duration = oldEnd.getTime() - oldStart.getTime();
+
+        // Set new start date but keep original time
+        const newStart = new Date(newDate);
+        newStart.setHours(oldStart.getHours(), oldStart.getMinutes(), oldStart.getSeconds());
+        
+        const newEnd = new Date(newStart.getTime() + duration);
+
+        const updatedActivity = {
+            ...activity,
+            horaInicio: newStart.toISOString(),
+            horaFim: newEnd.toISOString()
+        };
+
+        await handleUpdateActivity(updatedActivity);
+    };
+
+    const handleDeleteUser = async (usernameToDelete: string) => {
+        if (!user || user.role !== 'admin') return;
+        if (usernameToDelete === user.username) {
+            alert("Você não pode excluir seu próprio usuário.");
+            return;
+        }
+
+        if (window.confirm(`Tem certeza que deseja excluir o usuário "${usernameToDelete}"?`)) {
+            // 1. Remove from Supabase
+            if (isSupabaseConnected) {
+                const { error } = await supabase.from('app_users').delete().eq('username', usernameToDelete);
+                if (error) {
+                    console.error("Erro ao excluir usuário:", error);
+                    alert("Erro ao excluir usuário do banco de dados.");
+                    return;
+                }
+            }
+            
+            // 2. Update local state
+            setUsers(prev => prev.filter(u => u.username !== usernameToDelete));
+            
+            // 3. Log
+            addAuditLog("EXCLUIR_USER", `Admin excluiu o usuário ${usernameToDelete}`);
+        }
+    };
+
     const openCreateModal = () => {
         setEditingActivity(null);
         setIsModalOpen(true);
@@ -773,8 +822,8 @@ const App: React.FC = () => {
                 criticidade: validCriticidade,
                 status: ActivityStatus.Open, 
                 attachments: [],
-                beforeImage: [], // Initialize empty array
-                afterImage: [],  // Initialize empty array
+                beforeImage: [], 
+                afterImage: [],
             };
         }).filter(act => act.descricao && act.descricao !== 'N/A');
 
@@ -881,7 +930,7 @@ const App: React.FC = () => {
             case 'dashboard': return <DashboardView activities={filteredAndSortedActivities} customStatusLabels={statusLabels} />;
             case 'list': return <ActivityListView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} customStatusLabels={statusLabels} />;
             case 'board': return <ActivityBoardView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
-            case 'calendar': return <ActivityCalendarView activities={filteredAndSortedActivities} onEdit={openEditModal} customStatusLabels={statusLabels} />;
+            case 'calendar': return <ActivityCalendarView activities={filteredAndSortedActivities} onEdit={openEditModal} customStatusLabels={statusLabels} onDateChange={handleActivityDateChange} />;
             case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} />;
             case 'report': return <ReportView activities={filteredAndSortedActivities} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'audit': return <AuditLogView logs={auditLogs} />;
@@ -1015,7 +1064,40 @@ const App: React.FC = () => {
                         )}
                     </div>
 
-                    <div className="pb-6 border-b border-gray-200 dark:border-gray-700">
+                    {user.role === 'admin' && (
+                        <div className="pb-6 border-b border-gray-200 dark:border-gray-700 bg-red-50 dark:bg-red-900/20 p-4 rounded-lg mt-6">
+                            <h3 className="text-lg font-bold mb-2 text-gray-900 dark:text-white">Gerenciar Usuários</h3>
+                            <p className="text-xs text-gray-600 dark:text-gray-300 mb-4">
+                                Lista de usuários cadastrados no sistema.
+                            </p>
+                            <ul className="space-y-2 max-h-40 overflow-y-auto">
+                                {users.map((u) => (
+                                    <li key={u.username} className="flex justify-between items-center bg-white dark:bg-gray-800 p-3 rounded shadow-sm border dark:border-gray-700">
+                                        <div className="flex items-center space-x-3">
+                                            <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                                                 {u.profilePicture ? <img src={u.profilePicture} alt={u.name} className="w-full h-full object-cover" /> : <UserIcon className="w-5 h-5 m-auto text-gray-400" />}
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold dark:text-white">{u.name}</span>
+                                                <span className="text-xs text-gray-500 dark:text-gray-400">@{u.username} ({u.role})</span>
+                                            </div>
+                                        </div>
+                                        {u.username !== user.username && (
+                                            <button 
+                                                onClick={() => handleDeleteUser(u.username)}
+                                                className="text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                                                title="Excluir usuário"
+                                            >
+                                                <TrashIcon className="w-5 h-5" />
+                                            </button>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    <div className="pb-6 border-b border-gray-200 dark:border-gray-700 mt-6">
                         <h3 className="text-lg font-medium mb-4 text-gray-800 dark:text-white">Nomes dos Status</h3>
                         <div className="grid gap-4">
                             {Object.values(ActivityStatus).map((status) => (
