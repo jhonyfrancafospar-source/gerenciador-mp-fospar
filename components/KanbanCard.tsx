@@ -15,23 +15,30 @@ interface KanbanCardProps {
     onImageClick: (imageUrl: string) => void;
 }
 
-const ImagePreview: React.FC<{ image: Attachment, label: string, onClick: () => void }> = ({ image, label, onClick }) => (
-    <div className="relative cursor-pointer" onClick={onClick}>
-        <img
-            src={image.url}
-            alt={image.name}
-            className="w-full h-40 object-cover"
-            title={`Clique para ampliar: ${image.name}`}
-        />
-        <p className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs font-semibold px-2 py-1 rounded">
-            {label}
-        </p>
-    </div>
-);
+const ImagePreview: React.FC<{ images: Attachment[], label: string, onClick: (url: string) => void }> = ({ images, label, onClick }) => {
+    const firstImage = images[0];
+    const count = images.length;
+    
+    return (
+        <div className="relative cursor-pointer" onClick={() => onClick(firstImage.url)}>
+            <img
+                src={firstImage.url}
+                alt={firstImage.name}
+                className="w-full h-40 object-cover"
+                title={`Clique para ampliar: ${firstImage.name}`}
+            />
+            <p className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs font-semibold px-2 py-1 rounded">
+                {label} {count > 1 && `(+${count - 1})`}
+            </p>
+        </div>
+    );
+}
 
 
 export const KanbanCard: React.FC<KanbanCardProps> = ({ activity, onEdit, onImageClick }) => {
-    const hasImages = activity.beforeImage || activity.afterImage;
+    const hasBefore = activity.beforeImage && activity.beforeImage.length > 0;
+    const hasAfter = activity.afterImage && activity.afterImage.length > 0;
+    const hasImages = hasBefore || hasAfter;
 
     const handleDragStart = (e: React.DragEvent) => {
         e.dataTransfer.setData("text/plain", activity.id);
@@ -46,9 +53,9 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ activity, onEdit, onImag
         >
             
             {hasImages && (
-                <div className={`grid ${activity.beforeImage && activity.afterImage ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                    {activity.beforeImage && <ImagePreview image={activity.beforeImage} label="Antes" onClick={() => onImageClick(activity.beforeImage!.url)} />}
-                    {activity.afterImage && <ImagePreview image={activity.afterImage} label="Depois" onClick={() => onImageClick(activity.afterImage!.url)} />}
+                <div className={`grid ${hasBefore && hasAfter ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                    {hasBefore && <ImagePreview images={activity.beforeImage!} label="Antes" onClick={onImageClick} />}
+                    {hasAfter && <ImagePreview images={activity.afterImage!} label="Depois" onClick={onImageClick} />}
                 </div>
             )}
             
@@ -85,7 +92,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ activity, onEdit, onImag
                         <span>{new Date(activity.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(activity.horaFim).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                      <div className="flex items-center space-x-2">
-                        {(activity.beforeImage || activity.afterImage) && <CameraIcon className="w-3 h-3 text-blue-500"/>}
+                        {hasImages && <CameraIcon className="w-3 h-3 text-blue-500"/>}
                         <PaperClipIcon className="w-3 h-3" />
                         <span>{activity.attachments?.length || 0}</span>
                     </div>

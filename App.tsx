@@ -67,6 +67,7 @@ const App: React.FC = () => {
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
     const [pendingImportData, setPendingImportData] = useState<any[]>([]);
+    const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
     const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
     const [initialMapping, setInitialMapping] = useState<ImportMapping | undefined>(undefined);
 
@@ -130,6 +131,7 @@ const App: React.FC = () => {
                 if (users.length === 0) setUsers(mockUsers);
             } else if (usersData && usersData.length > 0) {
                 setIsSupabaseConnected(true);
+                console.log("Conectado ao Supabase com sucesso!");
                 const mappedUsers: User[] = usersData.map(u => ({
                     username: u.username,
                     password: u.password,
@@ -158,7 +160,7 @@ const App: React.FC = () => {
             const { data: actsData, error: actsError } = await supabase.from('activities').select('json_data');
             if (actsError) {
                  if (!actsError.message.includes('Could not find the table')) {
-                    console.error("Erro ao carregar atividades:", actsError.message);
+                    // Ignore
                  }
             } else if (actsData && actsData.length > 0) {
                 const loadedActs = actsData.map(row => row.json_data);
@@ -169,7 +171,7 @@ const App: React.FC = () => {
             const { data: batchData, error: batchError } = await supabase.from('import_batches').select('json_data');
              if (batchError) {
                  if (!batchError.message.includes('Could not find the table')) {
-                    console.error("Erro ao carregar lotes:", batchError.message);
+                    // Ignore
                  }
             } else if (batchData && batchData.length > 0) {
                 setImportBatches(batchData.map(row => row.json_data));
@@ -181,6 +183,14 @@ const App: React.FC = () => {
 
     // --- PERSISTENCE HELPERS ---
     
+    const alertSupabaseError = (error: any) => {
+        if (error && (error.code === '42501' || error.message.includes('row-level security'))) {
+            alert("ERRO DE PERMISSÃO NO BANCO DE DADOS!\n\nO Supabase bloqueou o salvamento. Você precisa rodar o script SQL de permissões no painel do Supabase.");
+        } else if (error && !error.message.includes('Could not find the table')) {
+            // console.error(error.message);
+        }
+    }
+
     const saveActivityToSupabase = async (activity: Activity) => {
         if (!isSupabaseConnected) return;
         try {
@@ -189,9 +199,7 @@ const App: React.FC = () => {
                 id: activity.id,
                 json_data: cleanActivity
             });
-            if (error && !error.message.includes('Could not find the table')) {
-                console.error('Error saving activity:', error.message);
-            }
+            alertSupabaseError(error);
         } catch (e) {
             console.error("Exception saving activity", e);
         }
@@ -201,7 +209,7 @@ const App: React.FC = () => {
         if (!isSupabaseConnected) return;
         try {
             const { error } = await supabase.from('activities').delete().eq('id', id);
-            if (error && !error.message.includes('Could not find the table')) console.error('Error deleting activity:', error.message);
+            alertSupabaseError(error);
         } catch (e) {}
     };
 
@@ -217,9 +225,7 @@ const App: React.FC = () => {
                 background_image: u.backgroundImage
             };
             const { error } = await supabase.from('app_users').upsert(dbUser);
-            if (error && !error.message.includes('Could not find the table')) {
-                console.error('Error saving user:', error.message);
-            }
+            alertSupabaseError(error);
         } catch (e) {}
     };
 
@@ -231,7 +237,7 @@ const App: React.FC = () => {
                 id: batch.id,
                 json_data: cleanBatch
             });
-             if (error && !error.message.includes('Could not find the table')) console.error('Error saving batch:', error.message);
+             alertSupabaseError(error);
         } catch (e) {}
     };
 
@@ -239,7 +245,7 @@ const App: React.FC = () => {
          if (!isSupabaseConnected) return;
          try {
             const { error } = await supabase.from('import_batches').delete().eq('id', batchId);
-            if (error && !error.message.includes('Could not find the table')) console.error('Error deleting batch:', error.message);
+            alertSupabaseError(error);
          } catch (e) {}
     };
 
@@ -280,8 +286,9 @@ const App: React.FC = () => {
             if (uploadError) {
                 if (uploadError.message.includes('Bucket not found') || 
                     (uploadError as any).error === 'Bucket not found' ||
-                    uploadError.message.includes('Could not find the table')) {
-                    console.warn("Storage não configurado. Usando Base64 local.");
+                    uploadError.message.includes('Could not find the table') || 
+                    uploadError.message.includes('row-level security')) {
+                    console.warn("Storage indisponível ou sem permissão. Usando Base64 local.");
                     return await fileToBase64(file);
                 }
                 throw uploadError;
@@ -575,6 +582,8 @@ const App: React.FC = () => {
         const file = event.target.files?.[0];
         if (!file) return;
         
+        setPendingImportFile(file);
+
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
@@ -764,8 +773,8 @@ const App: React.FC = () => {
                 criticidade: validCriticidade,
                 status: ActivityStatus.Open, 
                 attachments: [],
-                beforeImage: undefined,
-                afterImage: undefined,
+                beforeImage: [], // Initialize empty array
+                afterImage: [],  // Initialize empty array
             };
         }).filter(act => act.descricao && act.descricao !== 'N/A');
 
@@ -775,13 +784,19 @@ const App: React.FC = () => {
             await saveActivityToSupabase(act);
         }
 
+        let fileUrl = undefined;
+        if (pendingImportFile && !editingBatchId) {
+             fileUrl = await uploadFileToSupabase(pendingImportFile, `imports/${batchId}`);
+        }
+
         const newBatch: ImportBatch = {
             id: batchId,
             date: new Date().toISOString(),
             count: newActivities.length,
             rawData: pendingImportData,
             headers: excelHeaders,
-            mapping: mapping
+            mapping: mapping,
+            fileUrl: fileUrl || undefined
         };
 
         setImportBatches(prev => {
@@ -798,6 +813,7 @@ const App: React.FC = () => {
 
         setIsImportModalOpen(false);
         setPendingImportData([]);
+        setPendingImportFile(null);
         setEditingBatchId(null);
         setInitialMapping(undefined);
         alert(`${newActivities.length} atividades ${editingBatchId ? 'atualizadas' : 'importadas'} com sucesso!`);

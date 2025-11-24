@@ -61,43 +61,56 @@ export const ReportView: React.FC<ReportViewProps> = ({ activities, onImageClick
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                              <div>
                                 <h3 className="font-semibold mb-2 text-lg">Fotos</h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="text-center">
-                                        <p className="font-medium mb-1">Antes</p>
-                                        {activity.beforeImage ? (
-                                            <div 
-                                                className="relative cursor-pointer group" 
-                                                onClick={() => onImageClick(activity.beforeImage!.url)}
-                                                title="Clique para ampliar"
-                                            >
-                                                <img src={activity.beforeImage.url} alt="Antes" className="w-full h-48 object-cover rounded-md border dark:border-gray-600 transition-opacity group-hover:opacity-90" />
-                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-md">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-white">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
-                                                    </svg>
-                                                </div>
+                                <div className="space-y-4">
+                                    {/* Before Photos */}
+                                    <div>
+                                        <p className="font-medium mb-1 text-sm text-gray-600 dark:text-gray-400">Antes</p>
+                                        {activity.beforeImage && activity.beforeImage.length > 0 ? (
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {activity.beforeImage.map(img => (
+                                                    <div 
+                                                        key={img.id}
+                                                        className="relative cursor-pointer group aspect-square" 
+                                                        onClick={() => onImageClick(img.url)}
+                                                        title="Clique para ampliar"
+                                                    >
+                                                        <img src={img.url} alt="Antes" className="w-full h-full object-cover rounded-md border dark:border-gray-600 transition-opacity group-hover:opacity-90" />
+                                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-md">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-white">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
+                                                            </svg>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         ) : (
-                                            <div className="w-full h-48 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-md text-gray-500">Sem imagem</div>
+                                            <div className="w-full h-24 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-md text-gray-500 text-xs italic">Sem imagem</div>
                                         )}
                                     </div>
-                                    <div className="text-center">
-                                         <p className="font-medium mb-1">Depois</p>
-                                        {activity.afterImage ? (
-                                            <div 
-                                                className="relative cursor-pointer group" 
-                                                onClick={() => onImageClick(activity.afterImage!.url)}
-                                                title="Clique para ampliar"
-                                            >
-                                                <img src={activity.afterImage.url} alt="Depois" className="w-full h-48 object-cover rounded-md border dark:border-gray-600 transition-opacity group-hover:opacity-90" />
-                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-md">
-                                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-white">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
-                                                    </svg>
-                                                </div>
+
+                                    {/* After Photos */}
+                                    <div>
+                                        <p className="font-medium mb-1 text-sm text-gray-600 dark:text-gray-400">Depois</p>
+                                        {activity.afterImage && activity.afterImage.length > 0 ? (
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {activity.afterImage.map(img => (
+                                                    <div 
+                                                        key={img.id}
+                                                        className="relative cursor-pointer group aspect-square" 
+                                                        onClick={() => onImageClick(img.url)}
+                                                        title="Clique para ampliar"
+                                                    >
+                                                        <img src={img.url} alt="Depois" className="w-full h-full object-cover rounded-md border dark:border-gray-600 transition-opacity group-hover:opacity-90" />
+                                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-md">
+                                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-white">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
+                                                            </svg>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         ) : (
-                                            <div className="w-full h-48 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-md text-gray-500">Sem imagem</div>
+                                            <div className="w-full h-24 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-md text-gray-500 text-xs italic">Sem imagem</div>
                                         )}
                                     </div>
                                 </div>

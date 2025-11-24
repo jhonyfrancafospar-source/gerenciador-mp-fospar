@@ -8,6 +8,7 @@ export type FilterType = {
     // date removed
     idMp: string;
     onlyMyActivities: boolean;
+    isOnline?: boolean;
 };
 
 export type SortType = 'default' | 'deadline';
@@ -95,8 +96,8 @@ export interface Activity {
     status: ActivityStatus;
     comments?: Comment[];
     attachments?: Attachment[];
-    beforeImage?: Attachment;
-    afterImage?: Attachment;
+    beforeImage?: Attachment[]; // Changed to array
+    afterImage?: Attachment[]; // Changed to array
 }
 
 export interface ImportMapping {
@@ -122,4 +123,5 @@ export interface ImportBatch {
     rawData: any[]; // The raw Excel JSON
     headers: string[];
     mapping: ImportMapping;
+    fileUrl?: string; // URL of the original excel file
 }

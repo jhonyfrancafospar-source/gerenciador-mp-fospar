@@ -36,8 +36,8 @@ const initialFormState: Omit<Activity, 'id' | 'horaInicioReal' | 'horaFimReal'> 
     criticidade: Criticidade.Normal,
     status: ActivityStatus.Open,
     attachments: [],
-    beforeImage: undefined,
-    afterImage: undefined,
+    beforeImage: [],
+    afterImage: [],
 };
 
 
@@ -80,36 +80,46 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
         });
     };
 
-    const handleSingleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: 'beforeImage' | 'afterImage') => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            let url: string | null = null;
+    const handleImagesUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'beforeImage' | 'afterImage') => {
+        if (e.target.files) {
+            const files = Array.from(e.target.files) as File[];
+            
+            for (const file of files) {
+                let url: string | null = null;
 
-            if (onUpload) {
-                try {
-                    url = await onUpload(file);
-                } catch (e) {
-                    console.error("Upload failed", e);
+                if (onUpload) {
+                    try {
+                        url = await onUpload(file);
+                    } catch (e) {
+                        console.error("Upload failed", e);
+                    }
                 }
-            }
 
-            if (!url) {
-                url = await fileToBase64(file);
-            }
+                if (!url) {
+                    url = await fileToBase64(file);
+                }
 
-            const newAttachment: Attachment = {
-                id: `file_${Date.now()}_${file.name}`,
-                name: file.name,
-                type: 'image',
-                url: url,
-            };
-            setFormData(prev => ({ ...prev, [field]: newAttachment }));
+                const newAttachment: Attachment = {
+                    id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    name: file.name,
+                    type: 'image',
+                    url: url,
+                };
+                
+                setFormData(prev => ({ 
+                    ...prev, 
+                    [field]: [...(prev[field] || []), newAttachment] 
+                }));
+            }
         }
         e.target.value = '';
     };
 
-    const removeSingleImage = (field: 'beforeImage' | 'afterImage') => {
-        setFormData(prev => ({ ...prev, [field]: undefined }));
+    const removeImage = (field: 'beforeImage' | 'afterImage', imageId: string) => {
+        setFormData(prev => ({ 
+            ...prev, 
+            [field]: (prev[field] || []).filter(img => img.id !== imageId)
+        }));
     };
 
 
@@ -256,35 +266,51 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                 )}
             </div>
 
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-200 dark:border-gray-700 pt-4">
                 <div>
-                    <label className="block text-sm font-medium">Foto (Antes)</label>
-                    <div className="mt-1">
-                        {formData.beforeImage ? (
-                            <div className="relative group">
-                                <img src={formData.beforeImage.url} alt="Preview Antes" className="w-full h-32 object-cover rounded-md border dark:border-gray-600"/>
-                                <button type="button" onClick={() => removeSingleImage('beforeImage')} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <XMarkIcon className="w-4 h-4" />
-                                </button>
-                            </div>
-                        ) : (
-                            <input type="file" accept="image/*" onChange={(e) => handleSingleFileChange(e, 'beforeImage')} className={`${inputClasses} p-1`} />
-                        )}
+                    <label className="block text-sm font-medium mb-2">Fotos (Antes)</label>
+                    <div className="space-y-2">
+                        <div className="grid grid-cols-3 gap-2">
+                            {(formData.beforeImage || []).map(img => (
+                                <div key={img.id} className="relative group aspect-square">
+                                    <img src={img.url} alt="Preview" className="w-full h-full object-cover rounded-md border dark:border-gray-600" />
+                                    <button 
+                                        type="button" 
+                                        onClick={() => removeImage('beforeImage', img.id)} 
+                                        className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        <XMarkIcon className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                            <label className="cursor-pointer flex flex-col items-center justify-center w-full h-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors aspect-square">
+                                <span className="text-xs text-gray-500">+ Adicionar</span>
+                                <input type="file" multiple accept="image/*" onChange={(e) => handleImagesUpload(e, 'beforeImage')} className="hidden" />
+                            </label>
+                        </div>
                     </div>
                 </div>
                 <div>
-                    <label className="block text-sm font-medium">Foto (Depois)</label>
-                    <div className="mt-1">
-                        {formData.afterImage ? (
-                            <div className="relative group">
-                                <img src={formData.afterImage.url} alt="Preview Depois" className="w-full h-32 object-cover rounded-md border dark:border-gray-600"/>
-                                <button type="button" onClick={() => removeSingleImage('afterImage')} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <XMarkIcon className="w-4 h-4" />
-                                </button>
-                            </div>
-                        ) : (
-                            <input type="file" accept="image/*" onChange={(e) => handleSingleFileChange(e, 'afterImage')} className={`${inputClasses} p-1`} />
-                        )}
+                    <label className="block text-sm font-medium mb-2">Fotos (Depois)</label>
+                    <div className="space-y-2">
+                        <div className="grid grid-cols-3 gap-2">
+                            {(formData.afterImage || []).map(img => (
+                                <div key={img.id} className="relative group aspect-square">
+                                    <img src={img.url} alt="Preview" className="w-full h-full object-cover rounded-md border dark:border-gray-600" />
+                                    <button 
+                                        type="button" 
+                                        onClick={() => removeImage('afterImage', img.id)} 
+                                        className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        <XMarkIcon className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                            <label className="cursor-pointer flex flex-col items-center justify-center w-full h-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors aspect-square">
+                                <span className="text-xs text-gray-500">+ Adicionar</span>
+                                <input type="file" multiple accept="image/*" onChange={(e) => handleImagesUpload(e, 'afterImage')} className="hidden" />
+                            </label>
+                        </div>
                     </div>
                 </div>
             </div>
