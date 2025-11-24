@@ -57,6 +57,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
                 setLocalError('O nome é obrigatório.');
                 return;
             }
+            if (username.trim().length === 0) {
+                setLocalError('O usuário é obrigatório.');
+                return;
+            }
 
             const newUser: User = {
                 username,
@@ -144,7 +148,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
                         </div>
                     )}
 
-                    {(viewMode === 'login' || viewMode === 'recover') && (
+                    {(viewMode === 'login' || viewMode === 'register' || viewMode === 'recover') && (
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                 Usuário
