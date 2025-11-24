@@ -2,6 +2,7 @@
 import React from 'react';
 import type { Activity } from '../types';
 import { getStatusClasses, getStatusLabel } from '../utils/styleUtils';
+import { Attachment } from '../types';
 
 interface ReportViewProps {
     activities: Activity[];
@@ -25,6 +26,13 @@ export const ReportView: React.FC<ReportViewProps> = ({ activities, onImageClick
     if (activities.length === 0) {
         return <div className="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow">Nenhuma atividade para exibir no relatório.</div>;
     }
+
+    // Helper to safely get image arrays (handles legacy object data or nulls)
+    const getSafeImages = (data: any): Attachment[] => {
+        if (Array.isArray(data)) return data;
+        if (data && typeof data === 'object' && 'url' in data) return [data as Attachment];
+        return [];
+    };
 
     return (
         <div className="space-y-6">
@@ -51,7 +59,11 @@ export const ReportView: React.FC<ReportViewProps> = ({ activities, onImageClick
             </style>
             <div id="report-section">
                 <h1 className="text-2xl font-bold mb-4 text-center dark:text-white">Relatório de Atividades</h1>
-                {activities.map(activity => (
+                {activities.map(activity => {
+                    const beforeImages = getSafeImages(activity.beforeImage);
+                    const afterImages = getSafeImages(activity.afterImage);
+
+                    return (
                     <div key={activity.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 report-card">
                         <h2 className="text-xl font-bold mb-4 border-b pb-2 dark:border-gray-600">
                             {activity.idMp ? <span className="mr-2 text-gray-500 text-sm">[{activity.idMp}]</span> : null}
@@ -61,13 +73,13 @@ export const ReportView: React.FC<ReportViewProps> = ({ activities, onImageClick
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                              <div>
                                 <h3 className="font-semibold mb-2 text-lg">Fotos</h3>
-                                <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
                                     {/* Before Photos */}
                                     <div>
                                         <p className="font-medium mb-1 text-sm text-gray-600 dark:text-gray-400">Antes</p>
-                                        {activity.beforeImage && activity.beforeImage.length > 0 ? (
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {activity.beforeImage.map(img => (
+                                        {beforeImages.length > 0 ? (
+                                            <div className="grid grid-cols-1 gap-2">
+                                                {beforeImages.map(img => (
                                                     <div 
                                                         key={img.id}
                                                         className="relative cursor-pointer group aspect-square" 
@@ -91,9 +103,9 @@ export const ReportView: React.FC<ReportViewProps> = ({ activities, onImageClick
                                     {/* After Photos */}
                                     <div>
                                         <p className="font-medium mb-1 text-sm text-gray-600 dark:text-gray-400">Depois</p>
-                                        {activity.afterImage && activity.afterImage.length > 0 ? (
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {activity.afterImage.map(img => (
+                                        {afterImages.length > 0 ? (
+                                            <div className="grid grid-cols-1 gap-2">
+                                                {afterImages.map(img => (
                                                     <div 
                                                         key={img.id}
                                                         className="relative cursor-pointer group aspect-square" 
@@ -143,7 +155,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ activities, onImageClick
                         </div>
 
                     </div>
-                ))}
+                )})}
             </div>
         </div>
     );
