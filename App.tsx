@@ -138,7 +138,9 @@ const App: React.FC = () => {
                     name: u.name,
                     role: u.role as 'admin' | 'user',
                     profilePicture: u.profile_picture,
-                    backgroundImage: u.background_image
+                    backgroundImage: u.background_image,
+                    logoLight: u.logo_light,
+                    logoDark: u.logo_dark
                 }));
                 setUsers(mappedUsers);
                 
@@ -222,7 +224,9 @@ const App: React.FC = () => {
                 name: u.name,
                 role: u.role,
                 profile_picture: u.profilePicture,
-                background_image: u.backgroundImage
+                background_image: u.backgroundImage,
+                logo_light: u.logoLight,
+                logo_dark: u.logoDark
             };
             const { error } = await supabase.from('app_users').upsert(dbUser);
             alertSupabaseError(error);
@@ -426,6 +430,77 @@ const App: React.FC = () => {
                 setUser(updatedUser);
                 setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
                 await saveUserToSupabase(updatedUser);
+            }
+        }
+    };
+
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'light' | 'dark') => {
+        if (e.target.files && e.target.files[0] && user && user.role === 'admin') {
+            const file = e.target.files[0];
+            
+            // 1. Validate file size (limit to 2MB for safe base64 fallback if needed)
+            if (file.size > 2 * 1024 * 1024) {
+                alert("O arquivo é muito grande (limite: 2MB). Por favor, escolha uma imagem menor.");
+                e.target.value = ''; // Reset input
+                return;
+            }
+
+            // Feedback
+            const logoType = type === 'light' ? "Logo Claro" : "Logo Escuro";
+            console.log(`Iniciando upload de ${logoType}...`);
+
+            try {
+                const publicUrl = await uploadFileToSupabase(file, `system/logos/${type}`);
+                
+                if (publicUrl) {
+                    // We are storing system preferences on the admin user for simplicity in this architecture
+                    const updatedUser = { 
+                        ...user, 
+                        [type === 'light' ? 'logoLight' : 'logoDark']: publicUrl 
+                    };
+                    setUser(updatedUser);
+                    setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
+                    await saveUserToSupabase(updatedUser);
+                    addAuditLog("SYSTEM_LOGO", `Admin atualizou o ${logoType}`);
+                    alert(`${logoType} atualizado com sucesso!`);
+                } else {
+                    throw new Error("Falha ao gerar URL da imagem.");
+                }
+            } catch (error) {
+                console.error(error);
+                alert(`Erro ao salvar ${logoType}. Verifique o console ou tente uma imagem menor.`);
+            } finally {
+                // Always reset input so user can try again or select same file
+                e.target.value = '';
+            }
+        }
+    };
+
+    const handleLogoUrlSave = async (url: string, type: 'light' | 'dark') => {
+        if (user && user.role === 'admin') {
+            const updatedUser = {
+                ...user,
+                [type === 'light' ? 'logoLight' : 'logoDark']: url
+            };
+            setUser(updatedUser);
+            setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
+            await saveUserToSupabase(updatedUser);
+            // No alert here to avoid spam on every keystroke if using onChange, but we use onBlur
+            addAuditLog("SYSTEM_LOGO", `Admin atualizou URL do ${type === 'light' ? 'Logo Claro' : 'Logo Escuro'}`);
+        }
+    };
+
+    const handleRemoveLogo = async (type: 'light' | 'dark') => {
+        if (user && user.role === 'admin') {
+            if (window.confirm(`Deseja remover o ${type === 'light' ? 'Logo Claro' : 'Logo Escuro'}?`)) {
+                const updatedUser = {
+                    ...user,
+                    [type === 'light' ? 'logoLight' : 'logoDark']: '' // Clear string
+                };
+                setUser(updatedUser);
+                setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
+                await saveUserToSupabase(updatedUser);
+                addAuditLog("SYSTEM_LOGO", `Admin removeu o ${type === 'light' ? 'Logo Claro' : 'Logo Escuro'}`);
             }
         }
     };
@@ -925,6 +1000,17 @@ const App: React.FC = () => {
         return filtered;
     }, [activities, filters, user, currentView]);
 
+    // Determine system logos based on Admin user preferences
+    // In a real app with multiple tenants, this would be in a 'settings' table. 
+    // Here, we use the admin user's profile as the source of truth for system appearance.
+    const systemLogos = useMemo(() => {
+        const adminUser = users.find(u => u.role === 'admin');
+        return {
+            light: adminUser?.logoLight,
+            dark: adminUser?.logoDark
+        };
+    }, [users]);
+
     const renderView = () => {
         switch (currentView) {
             case 'dashboard': return <DashboardView activities={filteredAndSortedActivities} customStatusLabels={statusLabels} />;
@@ -974,6 +1060,7 @@ const App: React.FC = () => {
                 onLogout={handleLogout}
                 onOpenSettings={() => setIsSettingsModalOpen(true)}
                 isOnline={isSupabaseConnected}
+                systemLogos={systemLogos}
             />
 
             <main className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto relative z-10">
@@ -1020,6 +1107,74 @@ const App: React.FC = () => {
                             {userBackground && <button onClick={handleRemoveBackground} className="text-red-600 text-sm underline">Restaurar Padrão</button>}
                         </div>
                     </div>
+
+                    {user.role === 'admin' && (
+                        <div className="pb-6 border-b border-gray-200 dark:border-gray-700">
+                            <h3 className="text-lg font-medium mb-4 text-gray-800 dark:text-white">Logos do Sistema</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="flex flex-col space-y-2">
+                                    <span className="text-sm text-gray-600 dark:text-gray-400 font-semibold">Tema Claro</span>
+                                    <div className="flex flex-col space-y-2">
+                                        <div className="w-full h-16 border rounded bg-white flex items-center justify-center overflow-hidden relative">
+                                            {systemLogos.light ? <img src={systemLogos.light} alt="Logo Light" className="max-w-full max-h-full object-contain" /> : <span className="text-xs text-gray-400">Padrão</span>}
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <label className="cursor-pointer bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-1.5 rounded text-xs whitespace-nowrap">
+                                                Upload
+                                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleLogoUpload(e, 'light')} />
+                                            </label>
+                                            <input 
+                                                type="text" 
+                                                placeholder="Ou cole URL da imagem"
+                                                className="w-full p-1.5 text-xs border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                defaultValue={systemLogos.light || ''}
+                                                onBlur={(e) => handleLogoUrlSave(e.target.value, 'light')}
+                                            />
+                                            {systemLogos.light && (
+                                                <button 
+                                                    onClick={() => handleRemoveLogo('light')}
+                                                    className="p-1.5 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
+                                                    title="Remover Logo"
+                                                >
+                                                    <TrashIcon className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col space-y-2">
+                                    <span className="text-sm text-gray-600 dark:text-gray-400 font-semibold">Tema Escuro</span>
+                                    <div className="flex flex-col space-y-2">
+                                        <div className="w-full h-16 border rounded bg-gray-800 flex items-center justify-center overflow-hidden relative">
+                                            {systemLogos.dark ? <img src={systemLogos.dark} alt="Logo Dark" className="max-w-full max-h-full object-contain" /> : <span className="text-xs text-gray-400">Padrão</span>}
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <label className="cursor-pointer bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-1.5 rounded text-xs whitespace-nowrap">
+                                                Upload
+                                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleLogoUpload(e, 'dark')} />
+                                            </label>
+                                            <input 
+                                                type="text" 
+                                                placeholder="Ou cole URL da imagem"
+                                                className="w-full p-1.5 text-xs border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                defaultValue={systemLogos.dark || ''}
+                                                onBlur={(e) => handleLogoUrlSave(e.target.value, 'dark')}
+                                            />
+                                            {systemLogos.dark && (
+                                                <button 
+                                                    onClick={() => handleRemoveLogo('dark')}
+                                                    className="p-1.5 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
+                                                    title="Remover Logo"
+                                                >
+                                                    <TrashIcon className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="pb-6 border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
                         <h3 className="text-lg font-bold mb-2 text-gray-900 dark:text-white">Gerenciar Importações</h3>

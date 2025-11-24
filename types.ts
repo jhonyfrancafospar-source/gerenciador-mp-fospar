@@ -68,6 +68,9 @@ export interface User {
     role: 'admin' | 'user';
     profilePicture?: string;
     backgroundImage?: string;
+    // System preferences (usually stored on admin user)
+    logoLight?: string;
+    logoDark?: string;
 }
 
 export interface Activity {

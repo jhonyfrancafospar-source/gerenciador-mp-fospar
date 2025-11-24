@@ -1,5 +1,5 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import type { ViewType, FilterType, User } from '../types';
 import { SunIcon } from './icons/SunIcon';
 import { MoonIcon } from './icons/MoonIcon';
@@ -15,6 +15,8 @@ import { CogIcon } from './icons/CogIcon';
 import { UserIcon } from './icons/UserIcon';
 import { CalculatorIcon } from './icons/CalculatorIcon';
 import { CalendarIcon } from './icons/CalendarIcon';
+import { FunnelIcon } from './icons/FunnelIcon';
+import { ChevronUpIcon } from './icons/ChevronUpIcon';
 
 interface HeaderProps {
     theme: 'light' | 'dark';
@@ -32,6 +34,7 @@ interface HeaderProps {
     onLogout: () => void;
     onOpenSettings: () => void;
     isOnline?: boolean;
+    systemLogos?: { light?: string; dark?: string };
 }
 
 const NavButton: React.FC<{
@@ -69,8 +72,10 @@ export const Header: React.FC<HeaderProps> = ({
     onLogout,
     onOpenSettings,
     isOnline = true,
+    systemLogos
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [showFilters, setShowFilters] = useState(false);
 
     const handleImportClick = () => {
         fileInputRef.current?.click();
@@ -79,19 +84,98 @@ export const Header: React.FC<HeaderProps> = ({
     return (
         <header className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-md shadow-md p-4 sticky top-0 z-50 print:hidden transition-colors duration-300 border-b border-gray-200 dark:border-gray-700">
             <div className="container mx-auto">
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={onImport}
+                    accept=".xlsx, .xls, .csv"
+                    className="hidden"
+                />
+
                 <div className="flex flex-col xl:flex-row justify-between items-center space-y-4 xl:space-y-0 mb-4">
-                    <div className="flex items-center space-x-3">
-                        <div className="h-10 flex items-center space-x-2">
-                            <h1 className="text-2xl font-bold text-gray-800 dark:text-white tracking-tight">
-                                Gerenciador MP
-                            </h1>
-                            <div 
-                                title={isOnline ? "Banco de Dados Conectado" : "Modo Offline (Local)"}
-                                className={`w-3 h-3 rounded-full ${isOnline ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.6)]' : 'bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.6)]'}`}
-                            ></div>
+                    <div className="flex items-center justify-between w-full xl:w-auto">
+                        <div className="flex items-center space-x-4">
+                            {/* Logo Section */}
+                            <div className="flex-shrink-0">
+                                {theme === 'light' && systemLogos?.light ? (
+                                    <img src={systemLogos.light} alt="Logo" className="h-8 w-auto object-contain" />
+                                ) : theme === 'dark' && systemLogos?.dark ? (
+                                    <img src={systemLogos.dark} alt="Logo" className="h-8 w-auto object-contain" />
+                                ) : (
+                                    // Fallback if no logo is set
+                                    <div className="h-8 w-8 bg-primary-600 rounded-md flex items-center justify-center text-white font-bold text-xs">
+                                        MP
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="h-8 w-px bg-gray-300 dark:bg-gray-600 mx-2"></div>
+
+                            <div className="flex items-center space-x-2">
+                                <h1 className="text-xl font-bold text-gray-800 dark:text-white tracking-tight hidden sm:block">
+                                    Gerenciador MP
+                                </h1>
+                                <div 
+                                    title={isOnline ? "Banco de Dados Conectado" : "Modo Offline (Local)"}
+                                    className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.6)]' : 'bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.6)]'}`}
+                                ></div>
+                            </div>
+                        </div>
+
+                        {/* Mobile Actions Group (Visible on < XL) */}
+                        <div className="flex items-center gap-1 xl:hidden">
+                             <button
+                                onClick={handleImportClick}
+                                className="p-1.5 rounded-md bg-green-600 text-white shadow-sm"
+                                title="Importar"
+                            >
+                               <DocumentArrowDownIcon className="w-5 h-5" />
+                            </button>
+                            
+                            <button 
+                                onClick={onOpenSettings} 
+                                className="p-1.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+                                title="Configurações"
+                            >
+                                <CogIcon className="w-6 h-6" />
+                            </button>
+
+                             <button onClick={toggleTheme} className="p-1.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">
+                                {theme === 'light' ? <MoonIcon className="w-6 h-6" /> : <SunIcon className="w-6 h-6" />}
+                            </button>
+                            
+                            {user && (
+                                <>
+                                    <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 flex-shrink-0 ml-1">
+                                        {user.profilePicture ? (
+                                            <img src={user.profilePicture} alt={user.name} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                                <UserIcon className="w-5 h-5" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button 
+                                        onClick={onLogout} 
+                                        className="p-1.5 rounded-full text-red-500 hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
+                                        title="Sair"
+                                    >
+                                        <ArrowRightOnRectangleIcon className="w-6 h-6" />
+                                    </button>
+                                </>
+                            )}
+
+                            <button 
+                                onClick={() => setShowFilters(!showFilters)}
+                                className={`p-1.5 rounded-md transition-colors ml-1 ${showFilters ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                                title="Filtrar"
+                            >
+                                <FunnelIcon className="w-6 h-6" />
+                            </button>
                         </div>
                     </div>
-                    <nav className="flex items-center space-x-1 p-1 bg-gray-100 dark:bg-gray-900 rounded-lg overflow-x-auto max-w-full no-scrollbar">
+
+                    <nav className="flex items-center space-x-1 p-1 bg-gray-100 dark:bg-gray-900 rounded-lg overflow-x-auto max-w-full no-scrollbar w-full xl:w-auto">
                         <NavButton icon={<ChartPieIcon className="w-5 h-5" />} label="Dashboard" isActive={currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')} />
                         <NavButton icon={<ListBulletIcon className="w-5 h-5" />} label="Lista" isActive={currentView === 'list'} onClick={() => setCurrentView('list')} />
                         <NavButton icon={<ViewColumnsIcon className="w-5 h-5" />} label="Quadro" isActive={currentView === 'board'} onClick={() => setCurrentView('board')} />
@@ -101,14 +185,9 @@ export const Header: React.FC<HeaderProps> = ({
                         <NavButton icon={<CalculatorIcon className="w-5 h-5" />} label="Homem x Hora" isActive={currentView === 'manpower'} onClick={() => setCurrentView('manpower')} />
                         <NavButton icon={<ClockHistoryIcon className="w-5 h-5" />} label="Histórico" isActive={currentView === 'audit'} onClick={() => setCurrentView('audit')} />
                     </nav>
-                    <div className="flex items-center space-x-2">
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            onChange={onImport}
-                            accept=".xlsx, .xls, .csv"
-                            className="hidden"
-                        />
+                    
+                    {/* Desktop Actions (Hidden on Mobile) */}
+                    <div className="hidden xl:flex items-center space-x-2 justify-end w-full xl:w-auto">
                         <button
                             onClick={handleImportClick}
                             className="flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium bg-green-600 hover:bg-green-700 text-white transition-colors shadow-sm"
@@ -163,7 +242,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </div>
                 </div>
 
-                <div className="mt-4 bg-gray-50/90 dark:bg-gray-700/60 p-3 rounded-lg backdrop-blur-sm border border-gray-200 dark:border-gray-600">
+                <div className={`${showFilters ? 'block' : 'hidden'} lg:block mt-4 bg-gray-50/90 dark:bg-gray-700/60 p-3 rounded-lg backdrop-blur-sm border border-gray-200 dark:border-gray-600 transition-all duration-300`}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
                         <div className="flex flex-col">
                             <label htmlFor="id-mp-filter" className="text-xs font-bold text-gray-600 dark:text-gray-300 mb-1">ID MP</label>
@@ -225,6 +304,15 @@ export const Header: React.FC<HeaderProps> = ({
                             </label>
                         </div>
                     </div>
+
+                    {/* Minimize Button for Mobile */}
+                    <button 
+                        onClick={() => setShowFilters(false)}
+                        className="lg:hidden w-full flex justify-center items-center p-2 mt-4 text-gray-500 dark:text-gray-400 bg-white/50 dark:bg-gray-800/50 hover:bg-white dark:hover:bg-gray-800 rounded-md transition-colors border border-gray-200 dark:border-gray-600"
+                    >
+                        <ChevronUpIcon className="w-4 h-4" />
+                        <span className="text-xs font-medium ml-1">Minimizar Filtros</span>
+                    </button>
                 </div>
             </div>
         </header>
