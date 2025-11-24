@@ -106,20 +106,27 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                     url: url,
                 };
                 
-                setFormData(prev => ({ 
-                    ...prev, 
-                    [field]: [...(prev[field] || []), newAttachment] 
-                }));
+                setFormData(prev => {
+                    // Ensure we are appending to an array
+                    const currentArray = Array.isArray(prev[field]) ? prev[field] : [];
+                    return { 
+                        ...prev, 
+                        [field]: [...(currentArray || []), newAttachment] 
+                    };
+                });
             }
         }
         e.target.value = '';
     };
 
     const removeImage = (field: 'beforeImage' | 'afterImage', imageId: string) => {
-        setFormData(prev => ({ 
-            ...prev, 
-            [field]: (prev[field] || []).filter(img => img.id !== imageId)
-        }));
+        setFormData(prev => {
+            const currentArray = Array.isArray(prev[field]) ? prev[field] : [];
+            return { 
+                ...prev, 
+                [field]: (currentArray || []).filter(img => img.id !== imageId)
+            };
+        });
     };
 
 
@@ -177,10 +184,21 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
         return date.toISOString().slice(0, 16);
     }
 
+    // Helper to safely get image arrays (handles legacy object data or nulls)
+    const getSafeImages = (data: any): Attachment[] => {
+        if (Array.isArray(data)) return data;
+        // Fallback: If it's a legacy single object with a url, wrap it in an array
+        if (data && typeof data === 'object' && 'url' in data) return [data as Attachment];
+        return [];
+    };
+
     const inputClasses = "mt-1 block w-full p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700";
 
     const showRealTimeFields = formData.status === ActivityStatus.EmProgresso || formData.status === ActivityStatus.Closed || formData.status === ActivityStatus.ExecutadoParcialmente;
     const showRecurrenceLimit = formData.periodicidade !== Recorrencia.NaoHa;
+
+    const beforeImages = getSafeImages(formData.beforeImage);
+    const afterImages = getSafeImages(formData.afterImage);
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -271,7 +289,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                     <label className="block text-sm font-medium mb-2">Fotos (Antes)</label>
                     <div className="space-y-2">
                         <div className="grid grid-cols-3 gap-2">
-                            {(formData.beforeImage || []).map(img => (
+                            {beforeImages.map(img => (
                                 <div key={img.id} className="relative group aspect-square">
                                     <img src={img.url} alt="Preview" className="w-full h-full object-cover rounded-md border dark:border-gray-600" />
                                     <button 
@@ -294,7 +312,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                     <label className="block text-sm font-medium mb-2">Fotos (Depois)</label>
                     <div className="space-y-2">
                         <div className="grid grid-cols-3 gap-2">
-                            {(formData.afterImage || []).map(img => (
+                            {afterImages.map(img => (
                                 <div key={img.id} className="relative group aspect-square">
                                     <img src={img.url} alt="Preview" className="w-full h-full object-cover rounded-md border dark:border-gray-600" />
                                     <button 
