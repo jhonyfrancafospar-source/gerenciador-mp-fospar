@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { Activity } from '../types';
 import { getStatusClasses, getStatusLabel } from '../utils/styleUtils';
 import { Attachment } from '../types';
@@ -19,6 +19,88 @@ const formatTime = (isoString?: string) => {
         hour: '2-digit',
         minute: '2-digit'
     });
+};
+
+const ImageCarousel: React.FC<{ images: Attachment[], label: string, onImageClick: (url: string) => void }> = ({ images, label, onImageClick }) => {
+    const [index, setIndex] = useState(0);
+
+    const prev = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setIndex((i) => (i === 0 ? images.length - 1 : i - 1));
+    };
+
+    const next = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setIndex((i) => (i === images.length - 1 ? 0 : i + 1));
+    };
+
+    const current = images[index];
+
+    if (images.length === 0) {
+        return (
+            <div>
+                <p className="font-medium mb-1 text-sm text-gray-600 dark:text-gray-400">{label}</p>
+                <div className="w-full aspect-square flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-md border dark:border-gray-600 text-gray-500 text-xs italic">
+                    Sem imagem
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-1">
+                <p className="font-medium text-sm text-gray-600 dark:text-gray-400">{label}</p>
+                {images.length > 1 && (
+                    <span className="text-[10px] bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-gray-600 dark:text-gray-300">
+                        {index + 1}/{images.length}
+                    </span>
+                )}
+            </div>
+            <div 
+                className="relative group aspect-square w-full bg-gray-100 dark:bg-gray-800 rounded-md border dark:border-gray-600 overflow-hidden cursor-pointer"
+                onClick={() => onImageClick(current.url)}
+            >
+                <img 
+                    src={current.url} 
+                    alt={`${label} ${index + 1}`} 
+                    className="w-full h-full object-cover" 
+                />
+                
+                {/* Hover Overlay */}
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                     {/* Zoom Icon hint */}
+                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
+                    </svg>
+                </div>
+
+                {/* Arrows */}
+                {images.length > 1 && (
+                    <>
+                        <button 
+                            onClick={prev}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100 z-10"
+                            title="Anterior"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                            </svg>
+                        </button>
+                        <button 
+                            onClick={next}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100 z-10"
+                            title="Próxima"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                            </svg>
+                        </button>
+                    </>
+                )}
+            </div>
+        </div>
+    );
 };
 
 export const ReportView: React.FC<ReportViewProps> = ({ activities, onImageClick, customStatusLabels = {} }) => {
@@ -74,57 +156,8 @@ export const ReportView: React.FC<ReportViewProps> = ({ activities, onImageClick
                              <div>
                                 <h3 className="font-semibold mb-2 text-lg">Fotos</h3>
                                 <div className="grid grid-cols-2 gap-4">
-                                    {/* Before Photos */}
-                                    <div>
-                                        <p className="font-medium mb-1 text-sm text-gray-600 dark:text-gray-400">Antes</p>
-                                        {beforeImages.length > 0 ? (
-                                            <div className="grid grid-cols-1 gap-2">
-                                                {beforeImages.map(img => (
-                                                    <div 
-                                                        key={img.id}
-                                                        className="relative cursor-pointer group aspect-square" 
-                                                        onClick={() => onImageClick(img.url)}
-                                                        title="Clique para ampliar"
-                                                    >
-                                                        <img src={img.url} alt="Antes" className="w-full h-full object-cover rounded-md border dark:border-gray-600 transition-opacity group-hover:opacity-90" />
-                                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-md">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-white">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
-                                                            </svg>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="w-full h-24 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-md text-gray-500 text-xs italic">Sem imagem</div>
-                                        )}
-                                    </div>
-
-                                    {/* After Photos */}
-                                    <div>
-                                        <p className="font-medium mb-1 text-sm text-gray-600 dark:text-gray-400">Depois</p>
-                                        {afterImages.length > 0 ? (
-                                            <div className="grid grid-cols-1 gap-2">
-                                                {afterImages.map(img => (
-                                                    <div 
-                                                        key={img.id}
-                                                        className="relative cursor-pointer group aspect-square" 
-                                                        onClick={() => onImageClick(img.url)}
-                                                        title="Clique para ampliar"
-                                                    >
-                                                        <img src={img.url} alt="Depois" className="w-full h-full object-cover rounded-md border dark:border-gray-600 transition-opacity group-hover:opacity-90" />
-                                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-md">
-                                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-white">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
-                                                            </svg>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="w-full h-24 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-md text-gray-500 text-xs italic">Sem imagem</div>
-                                        )}
-                                    </div>
+                                    <ImageCarousel images={beforeImages} label="Antes" onImageClick={onImageClick} />
+                                    <ImageCarousel images={afterImages} label="Depois" onImageClick={onImageClick} />
                                 </div>
                             </div>
                             <div>

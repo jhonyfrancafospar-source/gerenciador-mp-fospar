@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import type { Activity, Attachment } from '../types';
 import { ActivityStatus, Criticidade, Recorrencia } from '../types';
@@ -86,7 +85,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: 'beforeImage' | 'afterImage' | 'attachments') => {
         if (e.target.files && e.target.files.length > 0) {
             setUploading(true);
-            const files = Array.from(e.target.files);
+            const files = Array.from(e.target.files) as File[];
             const newAttachments: Attachment[] = [];
 
             for (const file of files) {
