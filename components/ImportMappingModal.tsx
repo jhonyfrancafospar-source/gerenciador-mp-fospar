@@ -22,6 +22,7 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         area: '',
         turno: '',
         data: '',
+        dateFormat: 'DD/MM/AAAA',
         horaInicio: '',
         horaFim: '',
         duracao: '',
@@ -51,6 +52,13 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         { label: 'Ponto e Vírgula (;)', value: ';' },
         { label: 'E Comercial (&)', value: '&' },
         { label: 'Hífen (-)', value: '-' },
+    ];
+
+    const dateFormatOptions = [
+        { label: 'DD/MM/AAAA (ex: 31/12/2023)', value: 'DD/MM/AAAA' },
+        { label: 'MM/DD/AAAA (ex: 12/31/2023)', value: 'MM/DD/AAAA' },
+        { label: 'AAAA-MM-DD (ex: 2023-12-31)', value: 'AAAA-MM-DD' },
+        { label: 'DD-MM-AAAA (ex: 31-12-2023)', value: 'DD-MM-AAAA' },
     ];
 
     const autoMap = () => {
@@ -104,7 +112,7 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto p-1">
                     {appFields.map((field) => {
-                        if (field.key === 'responsavelSeparator') return null; // Rendered manually below
+                        if (field.key === 'responsavelSeparator' || field.key === 'dateFormat') return null; // Rendered manually
 
                         return (
                             <div key={field.key} className="flex flex-col">
@@ -136,6 +144,24 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
                                             className="p-1.5 border rounded-md text-xs w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
                                         >
                                             {separatorOptions.map(opt => (
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {/* Special Input for Date Format below Data */}
+                                {field.key === 'data' && (
+                                    <div className="mt-2">
+                                        <label className="text-[10px] font-bold text-gray-500 dark:text-gray-300 mb-0.5 block">
+                                            Formato da Data (se for texto)
+                                        </label>
+                                        <select
+                                            value={mapping.dateFormat}
+                                            onChange={(e) => setMapping({ ...mapping, dateFormat: e.target.value })}
+                                            className="p-1.5 border rounded-md text-xs w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                                        >
+                                            {dateFormatOptions.map(opt => (
                                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                                             ))}
                                         </select>

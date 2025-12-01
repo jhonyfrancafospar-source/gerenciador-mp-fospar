@@ -12,7 +12,9 @@
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "recharts": "2.12.7",
-    "@supabase/supabase-js": "2"
+    "@supabase/supabase-js": "2",
+    "@azure/msal-browser": "^4.26.2",
+    "@microsoft/microsoft-graph-client": "^3.0.7"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

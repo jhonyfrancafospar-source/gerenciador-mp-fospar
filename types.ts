@@ -62,15 +62,16 @@ export interface AuditLogEntry {
 }
 
 export interface User {
-    username: string;
-    password: string;
-    name: string; // Matches parts of 'responsavel' string
+    username: string; // Email for MS accounts
+    password?: string; // Optional for MS accounts
+    name: string; 
     role: 'admin' | 'user';
     profilePicture?: string;
     backgroundImage?: string;
     // System preferences (usually stored on admin user)
     logoLight?: string;
     logoDark?: string;
+    isMicrosoftAccount?: boolean;
 }
 
 export interface Activity {
@@ -113,6 +114,7 @@ export interface ImportMapping {
     area: string;
     turno: string;
     data?: string; // Separate Date column
+    dateFormat?: string; // Format of the date column (e.g. DD/MM/AAAA)
     horaInicio: string;
     horaFim: string;
     duracao: string; // Explicit duration mapping
