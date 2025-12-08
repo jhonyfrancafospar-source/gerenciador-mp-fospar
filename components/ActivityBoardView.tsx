@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import type { Activity, ActivityStatus } from '../types';
 import { ActivityStatus as StatusEnum } from '../types';
@@ -9,6 +10,7 @@ interface ActivityBoardViewProps {
     activities: Activity[];
     onEdit: (activity: Activity) => void;
     onUpdateStatus: (activityId: string, status: ActivityStatus) => void;
+    onDelete?: (activityId: string) => void;
     onImageClick: (imageUrl: string) => void;
     customStatusLabels?: Record<string, string>;
 }
@@ -21,7 +23,7 @@ const statusOrder = [
     StatusEnum.Closed
 ];
 
-export const ActivityBoardView: React.FC<ActivityBoardViewProps> = ({ activities, onEdit, onUpdateStatus, onImageClick, customStatusLabels = {} }) => {
+export const ActivityBoardView: React.FC<ActivityBoardViewProps> = ({ activities, onEdit, onUpdateStatus, onDelete, onImageClick, customStatusLabels = {} }) => {
     const [dragOverColumn, setDragOverColumn] = useState<StatusEnum | null>(null);
     
     const activitiesByStatus = (status: StatusEnum) => activities.filter(a => a.status === status);
@@ -72,7 +74,6 @@ export const ActivityBoardView: React.FC<ActivityBoardViewProps> = ({ activities
                         </div>
 
                         <div className="flex-1 p-2 space-y-3 overflow-y-auto rounded-lg scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
-                            {/* "Add Task" placeholder button - Enhanced Visibility */}
                             <button className="w-full text-left text-white font-bold flex items-center text-sm px-2 py-1 mb-2 transition-colors rounded hover:bg-white/20 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                                 <PlusIcon className="w-4 h-4 mr-1" /> Adicionar Tarefa
                             </button>
@@ -83,6 +84,7 @@ export const ActivityBoardView: React.FC<ActivityBoardViewProps> = ({ activities
                                     activity={activity} 
                                     onEdit={onEdit} 
                                     onUpdateStatus={onUpdateStatus} 
+                                    onDelete={onDelete}
                                     onImageClick={onImageClick} 
                                 />
                             ))}

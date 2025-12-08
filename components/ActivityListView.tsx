@@ -1,15 +1,18 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { type Activity, ActivityStatus } from '../types';
 import { PencilIcon } from './icons/PencilIcon';
 import { PaperClipIcon } from './icons/PaperClipIcon';
 import { CameraIcon } from './icons/CameraIcon';
 import { ArrowsUpDownIcon } from './icons/ArrowsUpDownIcon';
+import { TrashIcon } from './icons/TrashIcon';
 import { getStatusClasses, getCriticidadeClasses, getStatusLabel } from '../utils/styleUtils';
 
 interface ActivityListViewProps {
     activities: Activity[];
     onEdit: (activity: Activity) => void;
     onUpdateStatus: (activityId: string, status: ActivityStatus) => void;
+    onDelete?: (activityId: string) => void;
     customStatusLabels?: Record<string, string>;
 }
 
@@ -20,7 +23,7 @@ interface SortConfig {
     direction: SortDirection;
 }
 
-export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, onEdit, onUpdateStatus, customStatusLabels = {} }) => {
+export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, onEdit, onUpdateStatus, onDelete, customStatusLabels = {} }) => {
     // Sorting State
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: null, direction: 'asc' });
     
@@ -31,13 +34,12 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
         responsavel: 130,
         supervisor: 130,
         turno: 70,
-        // periodicidade removed
         horario: 110,
         duracao: 70,
         criticidade: 90,
         status: 130,
-        anexos: 70,
-        acoes: 50
+        anexos: 60,
+        acoes: 70
     });
     
     const resizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
@@ -168,7 +170,6 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                         <Th id="responsavel" label="Responsável" sortKey="responsavel" />
                         <Th id="supervisor" label="Supervisor" sortKey="supervisor" />
                         <Th id="turno" label="Turno" sortKey="turno" />
-                        {/* Periodicidade column removed */}
                         <Th id="horario" label="Horário" sortKey="horaInicio" />
                         <Th id="duracao" label="Duração" sortKey="duracao" />
                         <Th id="criticidade" label="Criticidade" sortKey="criticidade" />
@@ -185,33 +186,32 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                         return (
                             <tr key={activity.id} className="bg-transparent hover:bg-gray-50/80 dark:hover:bg-gray-700/50 transition-colors">
                                 <td 
-                                    className="px-3 py-2 font-medium text-gray-900 dark:text-white truncate overflow-hidden cursor-pointer hover:text-primary-600 hover:underline"
+                                    className="px-3 py-1.5 font-medium text-gray-900 dark:text-white truncate overflow-hidden cursor-pointer hover:text-primary-600 hover:underline"
                                     onClick={() => onEdit(activity)}
                                     title="Clique para editar"
                                 >
                                     {activity.tag}
                                 </td>
                                 <td 
-                                    className="px-3 py-2 truncate overflow-hidden cursor-pointer hover:text-primary-600" 
+                                    className="px-3 py-1.5 truncate overflow-hidden cursor-pointer hover:text-primary-600" 
                                     title={activity.descricao}
                                     onClick={() => onEdit(activity)}
                                 >
                                     {activity.descricao}
                                 </td>
-                                <td className="px-3 py-2 truncate overflow-hidden">{activity.responsavel}</td>
-                                <td className="px-3 py-2 truncate overflow-hidden">{activity.supervisor}</td>
-                                <td className="px-3 py-2 truncate overflow-hidden text-center">{activity.turno}</td>
-                                {/* Periodicidade cell removed */}
-                                <td className={`px-3 py-2 truncate overflow-hidden ${isOverdue ? 'text-red-600 font-bold dark:text-red-400' : ''}`}>
+                                <td className="px-3 py-1.5 truncate overflow-hidden">{activity.responsavel}</td>
+                                <td className="px-3 py-1.5 truncate overflow-hidden">{activity.supervisor}</td>
+                                <td className="px-3 py-1.5 truncate overflow-hidden text-center">{activity.turno}</td>
+                                <td className={`px-3 py-1.5 truncate overflow-hidden ${isOverdue ? 'text-red-600 font-bold dark:text-red-400' : ''}`}>
                                     {new Date(activity.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(activity.horaFim).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </td>
-                                <td className="px-3 py-2 truncate overflow-hidden text-center">{activity.duracao}</td>
-                                <td className="px-3 py-2">
+                                <td className="px-3 py-1.5 truncate overflow-hidden text-center">{activity.duracao}</td>
+                                <td className="px-3 py-1.5">
                                     <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${getCriticidadeClasses(activity.criticidade)}`}>
                                         {activity.criticidade}
                                     </span>
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-3 py-1.5">
                                     <select 
                                         value={activity.status}
                                         onChange={(e) => handleStatusChange(activity.id, e.target.value)}
@@ -224,7 +224,7 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                                         ))}
                                     </select>
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-3 py-1.5">
                                     <div className="flex items-center justify-center space-x-1 text-gray-500 dark:text-gray-400">
                                         {(activity.beforeImage || activity.afterImage) && (
                                             <span title="Contém imagem de antes/depois">
@@ -239,10 +239,17 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                                         )}
                                     </div>
                                 </td>
-                                <td className="px-3 py-2 text-center">
-                                    <button onClick={() => onEdit(activity)} className="text-primary-600 hover:text-primary-800 dark:text-primary-500 dark:hover:text-primary-300 transition-colors" title="Editar">
-                                        <PencilIcon className="w-4 h-4"/>
-                                    </button>
+                                <td className="px-3 py-1.5 text-center">
+                                    <div className="flex items-center justify-center space-x-2">
+                                        <button onClick={() => onEdit(activity)} className="text-primary-600 hover:text-primary-800 dark:text-primary-500 dark:hover:text-primary-300 transition-colors" title="Editar">
+                                            <PencilIcon className="w-4 h-4"/>
+                                        </button>
+                                        {onDelete && (
+                                            <button onClick={() => onDelete(activity.id)} className="text-red-500 hover:text-red-700 transition-colors" title="Excluir">
+                                                <TrashIcon className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </td>
                             </tr>
                         );

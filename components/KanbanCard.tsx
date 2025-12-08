@@ -6,12 +6,14 @@ import { UserIcon } from './icons/UserIcon';
 import { PencilIcon } from './icons/PencilIcon';
 import { PaperClipIcon } from './icons/PaperClipIcon';
 import { CameraIcon } from './icons/CameraIcon';
+import { TrashIcon } from './icons/TrashIcon';
 import { getCriticidadeClasses } from '../utils/styleUtils';
 
 interface KanbanCardProps {
     activity: Activity;
     onEdit: (activity: Activity) => void;
     onUpdateStatus: (activityId: string, status: ActivityStatus) => void;
+    onDelete?: (activityId: string) => void;
     onImageClick: (imageUrl: string) => void;
 }
 
@@ -35,7 +37,7 @@ const ImagePreview: React.FC<{ images: Attachment[], label: string, onClick: (ur
 }
 
 
-export const KanbanCard: React.FC<KanbanCardProps> = ({ activity, onEdit, onImageClick }) => {
+export const KanbanCard: React.FC<KanbanCardProps> = ({ activity, onEdit, onDelete, onImageClick }) => {
     const hasBefore = activity.beforeImage && activity.beforeImage.length > 0;
     const hasAfter = activity.afterImage && activity.afterImage.length > 0;
     const hasImages = hasBefore || hasAfter;
@@ -62,9 +64,16 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ activity, onEdit, onImag
             <div className="p-4 space-y-3">
                 <div className="flex justify-between items-start">
                     <p className="font-semibold text-gray-800 dark:text-white flex-1 pr-2 text-sm">{activity.descricao}</p>
-                     <button onClick={() => onEdit(activity)} className="text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 flex-shrink-0">
-                        <PencilIcon className="w-4 h-4" />
-                    </button>
+                     <div className="flex space-x-1 flex-shrink-0">
+                        <button onClick={() => onEdit(activity)} className="text-gray-400 hover:text-primary-500 dark:hover:text-primary-400">
+                            <PencilIcon className="w-4 h-4" />
+                        </button>
+                        {onDelete && (
+                            <button onClick={() => onDelete(activity.id)} className="text-gray-400 hover:text-red-500">
+                                <TrashIcon className="w-4 h-4" />
+                            </button>
+                        )}
+                     </div>
                 </div>
                 
                 <div className="flex items-center justify-between">

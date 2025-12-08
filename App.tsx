@@ -92,7 +92,7 @@ const App: React.FC = () => {
             // Check connection first
             const { error: healthCheck } = await supabase.from('activities').select('id').limit(1);
             
-            if (healthCheck && healthCheck.code === 'PGRST204' /* Table not found code varies, but usually 404-ish or specific PG code */) {
+            if (healthCheck && healthCheck.code === 'PGRST204') {
                // Ignore specific error logic for now, try catch block below is better
             }
 
@@ -497,16 +497,33 @@ const App: React.FC = () => {
         setEditingActivity(null);
     };
     
+    // STRICT: This function MUST NOT change dates. Only Status.
     const handleUpdateStatus = async (activityId: string, status: ActivityStatus) => {
         const activity = activities.find(a => a.id === activityId);
         if (activity) {
+            // We strictly only update the status field.
+            // Dates are preserved exactly as they were (imported or manually set).
             const updatedActivity = { ...activity, status };
+            
             setActivities(prev => prev.map(act => act.id === activityId ? updatedActivity : act));
             await saveActivityToSupabase(updatedActivity);
         }
     };
 
+    const handleDeleteActivity = async (activityId: string) => {
+        if (window.confirm("Tem certeza que deseja excluir esta atividade?")) {
+            // Local state update
+            setActivities(prev => prev.filter(act => act.id !== activityId));
+            
+            // Database update
+            await deleteActivityFromSupabase(activityId);
+            
+            addAuditLog("EXCLUIR", `Excluiu atividade ${activityId}`);
+        }
+    };
+
     const handleActivityDateChange = async (activityId: string, newDate: Date) => {
+        // This is the ONLY place where dates change programmatically via drag-and-drop
         const activity = activities.find(a => a.id === activityId);
         if (!activity) return;
         const oldStart = new Date(activity.horaInicio);
@@ -701,6 +718,7 @@ const App: React.FC = () => {
                 id: `imported_${batchId}_${index}`,
                 idMp: mapping.idMp ? (row[mapping.idMp] || '') : '',
                 tag: mapping.tag ? (row[mapping.tag] || 'SEM TAG') : 'SEM TAG',
+                tipo: 'PLANO',
                 descricao: mapping.descricao ? (row[mapping.descricao] || '') : '',
                 responsavel: rawResp,
                 supervisor: mapping.supervisor ? (row[mapping.supervisor] || '') : '',
@@ -826,8 +844,8 @@ const App: React.FC = () => {
     const renderView = () => {
         switch (currentView) {
             case 'dashboard': return <DashboardView activities={filteredAndSortedActivities} customStatusLabels={statusLabels} />;
-            case 'list': return <ActivityListView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} customStatusLabels={statusLabels} />;
-            case 'board': return <ActivityBoardView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
+            case 'list': return <ActivityListView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={handleDeleteActivity} customStatusLabels={statusLabels} />;
+            case 'board': return <ActivityBoardView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={handleDeleteActivity} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'calendar': return <ActivityCalendarView activities={filteredAndSortedActivities} onEdit={openEditModal} customStatusLabels={statusLabels} onDateChange={handleActivityDateChange} />;
             case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} />;
             case 'report': return <ReportView activities={filteredAndSortedActivities} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
@@ -873,7 +891,7 @@ const App: React.FC = () => {
                 systemLogos={systemLogos}
             />
 
-            <main className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto relative z-10">
+            <main className="p-2 flex-1 overflow-y-auto relative z-10">
                 {renderView()}
             </main>
             
@@ -884,6 +902,7 @@ const App: React.FC = () => {
             <ImportMappingModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} excelHeaders={excelHeaders} onConfirm={handleImportConfirm} initialMapping={initialMapping} />
 
             <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="Configurações">
+                {/* Settings Content (Existing) */}
                 <div className="space-y-6 text-gray-800 dark:text-gray-200">
                     {/* User Profile */}
                     <div className="border-b border-gray-200 dark:border-gray-700 pb-4">

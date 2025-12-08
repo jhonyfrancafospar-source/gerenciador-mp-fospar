@@ -21,6 +21,7 @@ const GanttBar: React.FC<{ activity: Activity, chartStart: number, hourWidth: nu
     const end = new Date(activity.horaFim).getTime();
 
     // Calculate position relative to chart start
+    // Ensure we account for strict pixel arithmetic to align with the grid
     const diffMs = start - chartStart;
     const durationMs = end - start;
     
@@ -150,17 +151,19 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
         return <div className="text-center p-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-lg shadow text-gray-800 dark:text-gray-200">Nenhuma atividade para exibir no gráfico de Gantt.</div>;
     }
 
+    // Sort strictly by Date first.
+    // Changing status should NOT move the activity if date is same.
     const sortedActivities = [...activities].sort((a,b) => {
         return new Date(a.horaInicio).getTime() - new Date(b.horaInicio).getTime();
     });
 
     return (
-        <div className="flex flex-col h-[75vh] bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-lg shadow border border-gray-200 dark:border-gray-700">
+        <div className="flex flex-col h-[80vh] bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-lg shadow border border-gray-200 dark:border-gray-700">
             
             {/* Controls Toolbar */}
-            <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-t-lg">
+            <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-t-lg">
                 <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-1 bg-white dark:bg-gray-700 rounded-md border dark:border-gray-600 p-1">
+                    <div className="flex items-center space-x-1 bg-white dark:bg-gray-700 rounded-md border dark:border-gray-600 p-0.5">
                         <button 
                             onClick={() => setHourWidth(prev => Math.max(20, prev - 10))}
                             className="px-2 py-1 text-xs font-bold text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 rounded"
@@ -178,14 +181,14 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                         </button>
                     </div>
                     
-                    <label className="flex items-center cursor-pointer space-x-2 text-sm text-gray-700 dark:text-gray-300">
+                    <label className="flex items-center cursor-pointer space-x-2 text-xs text-gray-700 dark:text-gray-300">
                         <input 
                             type="checkbox" 
                             checked={isCompact} 
                             onChange={(e) => setIsCompact(e.target.checked)} 
                             className="rounded text-primary-600 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600"
                         />
-                        <span>Modo Compacto</span>
+                        <span>Compacto</span>
                     </label>
                 </div>
                 
@@ -199,6 +202,11 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
 
             {/* Main Chart Area */}
             <div className="flex-1 overflow-auto relative" ref={containerRef}>
+                {/* 
+                   KEY LAYOUT FIX:
+                   Ensure the container for rows and grid is exactly the same width.
+                   Grid acts as absolute background to the relative content container.
+                */}
                 <div className="relative inline-block" style={{ minWidth: '100%' }}>
                     
                     {/* Header Container (Sticky) */}
@@ -217,7 +225,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                                 <div 
                                     key={day.toISOString()}
                                     style={{ width: `${24 * hourWidth}px` }}
-                                    className="flex-shrink-0 text-center text-xs font-bold text-gray-700 dark:text-gray-200 border-r border-gray-300 dark:border-gray-600 py-1 bg-gray-200 dark:bg-gray-600"
+                                    className="flex-shrink-0 text-center text-xs font-bold text-gray-700 dark:text-gray-200 border-r border-gray-300 dark:border-gray-600 py-1 bg-gray-200 dark:bg-gray-600 box-border"
                                 >
                                     {day.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
                                 </div>
@@ -238,7 +246,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                                         <div 
                                             key={`${day.toISOString()}-${i}`}
                                             style={{ width: `${hourWidth}px` }}
-                                            className="flex-shrink-0 text-center text-[10px] text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-600 py-0.5 bg-gray-50 dark:bg-gray-700"
+                                            className="flex-shrink-0 text-center text-[10px] text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-600 py-0.5 bg-gray-50 dark:bg-gray-700 box-border"
                                         >
                                             {i.toString().padStart(2, '0')}:00
                                         </div>
@@ -251,21 +259,23 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                     {/* Chart Body */}
                     <div className="relative">
                          {/* Background Grid & Current Time */}
+                         {/* Positioned ABSOLUTE covering the entire width of rows, shifted by yAxisWidth */}
                         <div 
                             className="absolute top-0 bottom-0" 
                             style={{ 
                                 left: `${yAxisWidth}px`, 
                                 width: `${totalChartWidth}px`, 
-                                pointerEvents: 'none' 
+                                pointerEvents: 'none',
+                                zIndex: 0
                             }}
                         >
-                             {/* Draw grid lines for every hour */}
+                             {/* Draw grid lines for every hour - Exact match with header logic */}
                              {days.map((day, dayIdx) => (
                                 <React.Fragment key={`grid-${day.toISOString()}`}>
                                     {Array.from({ length: 24 }, (_, i) => (
                                         <div 
                                             key={`grid-line-${dayIdx}-${i}`}
-                                            className={`absolute top-0 bottom-0 border-l ${i === 0 ? 'border-gray-300 dark:border-gray-500' : 'border-gray-100 dark:border-gray-700/50 border-dashed'}`}
+                                            className={`absolute top-0 bottom-0 border-l box-border ${i === 0 ? 'border-gray-300 dark:border-gray-500' : 'border-gray-100 dark:border-gray-700/50 border-dashed'}`}
                                             style={{ left: `${(dayIdx * 24 + i) * hourWidth}px` }}
                                         ></div>
                                     ))}
@@ -280,12 +290,12 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                             <div 
                                 key={activity.id} 
                                 style={{ height: `${rowHeight}px` }} 
-                                className={`flex items-center border-b border-gray-100 dark:border-gray-700/50 relative hover:bg-blue-50 dark:hover:bg-gray-700/30 transition-colors ${index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/30 dark:bg-gray-800/50'}`}
+                                className={`flex items-center border-b border-gray-100 dark:border-gray-700/50 relative hover:bg-blue-50 dark:hover:bg-gray-700/30 transition-colors z-10 ${index % 2 === 0 ? 'bg-transparent' : 'bg-gray-50/30 dark:bg-gray-800/50'}`}
                             >
                                 {/* Y Axis Label (Sticky Left) */}
                                 <div 
                                     style={{ width: `${yAxisWidth}px` }}
-                                    className="flex-shrink-0 h-full px-3 sticky left-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-600 flex flex-col justify-center cursor-pointer z-10 group"
+                                    className="flex-shrink-0 h-full px-3 sticky left-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-600 flex flex-col justify-center cursor-pointer z-20 group"
                                     title={`${activity.tag} - ${activity.descricao}`}
                                     onClick={() => onEdit(activity)}
                                 >
