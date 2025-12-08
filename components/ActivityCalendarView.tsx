@@ -66,7 +66,7 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
     const days = [];
     // Empty cells for days before the first of the month
     for (let i = 0; i < firstDay; i++) {
-        days.push(<div key={`empty-${i}`} className="bg-gray-50 dark:bg-gray-900/50 min-h-[100px] border-r border-b border-gray-200 dark:border-gray-700"></div>);
+        days.push(<div key={`empty-${i}`} className="bg-gray-50/50 dark:bg-gray-900/30 min-h-[100px] border-r border-b border-gray-200/50 dark:border-gray-700/50"></div>);
     }
     
     // Actual days
@@ -81,7 +81,7 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
         days.push(
             <div 
                 key={day} 
-                className={`min-h-[120px] border-r border-b border-gray-200 dark:border-gray-700 p-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30 ${isToday ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-white/80 dark:bg-gray-800/80'}`}
+                className={`min-h-[120px] border-r border-b border-gray-200/50 dark:border-gray-700/50 p-2 transition-colors hover:bg-gray-50/50 dark:hover:bg-gray-700/30 ${isToday ? 'bg-blue-50/80 dark:bg-blue-900/40' : 'bg-white/60 dark:bg-gray-800/60'}`}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, day)}
             >
@@ -90,7 +90,7 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
                         {day}
                     </span>
                     {dayActivities.length > 0 && (
-                        <span className="text-xs text-gray-400 font-mono">{dayActivities.length} atv</span>
+                        <span className="text-xs text-gray-500 font-mono">{dayActivities.length} atv</span>
                     )}
                 </div>
                 
@@ -114,21 +114,21 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
     }
 
     return (
-        <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-lg shadow-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+        <div className="bg-white/70 dark:bg-gray-900/80 backdrop-blur-md rounded-lg shadow-lg overflow-hidden border border-gray-200/50 dark:border-gray-700/50">
             {/* Calendar Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200/50 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/50">
                 <div className="flex items-center space-x-4">
                     <h2 className="text-xl font-bold text-gray-800 dark:text-white capitalize">
                         {monthNames[month]} {year}
                     </h2>
                     <div className="flex items-center space-x-1">
-                        <button onClick={prevMonth} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+                        <button onClick={prevMonth} className="p-1 rounded hover:bg-gray-200/50 dark:hover:bg-gray-700/50 text-gray-600 dark:text-gray-300">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                         </button>
                         <button onClick={goToToday} className="px-3 py-1 text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-800">
                             Hoje
                         </button>
-                        <button onClick={nextMonth} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+                        <button onClick={nextMonth} className="p-1 rounded hover:bg-gray-200/50 dark:hover:bg-gray-700/50 text-gray-600 dark:text-gray-300">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         </button>
                     </div>
@@ -139,7 +139,7 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
             </div>
 
             {/* Weekdays Header */}
-            <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-900">
+            <div className="grid grid-cols-7 border-b border-gray-200/50 dark:border-gray-700/50 bg-gray-100/50 dark:bg-gray-900/50">
                 {dayNames.map(day => (
                     <div key={day} className="py-2 text-center text-sm font-semibold text-gray-600 dark:text-gray-400">
                         {day}
@@ -148,7 +148,7 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
             </div>
 
             {/* Calendar Grid */}
-            <div className="grid grid-cols-7 bg-gray-200 dark:bg-gray-700 gap-px border-l border-gray-200 dark:border-gray-700">
+            <div className="grid grid-cols-7 bg-gray-200/50 dark:bg-gray-700/50 gap-px border-l border-gray-200/50 dark:border-gray-700/50">
                 {days}
             </div>
         </div>

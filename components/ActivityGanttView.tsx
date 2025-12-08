@@ -148,7 +148,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
     };
 
     if (activities.length === 0) {
-        return <div className="text-center p-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-lg shadow text-gray-800 dark:text-gray-200">Nenhuma atividade para exibir no gráfico de Gantt.</div>;
+        return <div className="text-center p-8 bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow text-gray-800 dark:text-gray-200">Nenhuma atividade para exibir no gráfico de Gantt.</div>;
     }
 
     // Sort strictly by Date first.
@@ -158,12 +158,12 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
     });
 
     return (
-        <div className="flex flex-col h-[80vh] bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-lg shadow border border-gray-200 dark:border-gray-700">
+        <div className="flex flex-col h-[80vh] bg-white/70 dark:bg-gray-900/80 backdrop-blur-md rounded-lg shadow border border-gray-200/50 dark:border-gray-700/50">
             
             {/* Controls Toolbar */}
-            <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-t-lg">
+            <div className="p-2 border-b border-gray-200/50 dark:border-gray-700/50 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50 rounded-t-lg">
                 <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-1 bg-white dark:bg-gray-700 rounded-md border dark:border-gray-600 p-0.5">
+                    <div className="flex items-center space-x-1 bg-white/50 dark:bg-gray-700/50 rounded-md border dark:border-gray-600 p-0.5">
                         <button 
                             onClick={() => setHourWidth(prev => Math.max(20, prev - 10))}
                             className="px-2 py-1 text-xs font-bold text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 rounded"
@@ -194,7 +194,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                 
                 <button 
                     onClick={scrollToNow}
-                    className="px-3 py-1 text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 rounded border border-red-200 dark:border-red-800 hover:bg-red-200 transition-colors"
+                    className="px-3 py-1 text-xs bg-red-100/80 text-red-700 dark:bg-red-900/50 dark:text-red-300 rounded border border-red-200 dark:border-red-800 hover:bg-red-200 transition-colors"
                 >
                     Ir para Agora
                 </button>
@@ -210,14 +210,14 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                 <div className="relative inline-block" style={{ minWidth: '100%' }}>
                     
                     {/* Header Container (Sticky) */}
-                    <div className="sticky top-0 z-30 bg-gray-100 dark:bg-gray-700 shadow-sm">
+                    <div className="sticky top-0 z-30 bg-gray-100/90 dark:bg-gray-700/90 shadow-sm backdrop-blur-sm">
                         
                         {/* Row 1: Days */}
                         <div className="flex border-b border-gray-300 dark:border-gray-600">
                             {/* Empty corner for Y axis */}
                             <div 
                                 style={{ width: `${yAxisWidth}px` }} 
-                                className="flex-shrink-0 sticky left-0 bg-gray-200 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-600 z-40"
+                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 z-40 backdrop-blur-sm"
                             ></div>
                             
                             {/* Days Loop */}
@@ -225,7 +225,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                                 <div 
                                     key={day.toISOString()}
                                     style={{ width: `${24 * hourWidth}px` }}
-                                    className="flex-shrink-0 text-center text-xs font-bold text-gray-700 dark:text-gray-200 border-r border-gray-300 dark:border-gray-600 py-1 bg-gray-200 dark:bg-gray-600 box-border"
+                                    className="flex-shrink-0 text-center text-xs font-bold text-gray-700 dark:text-gray-200 border-r border-gray-300 dark:border-gray-600 py-1 bg-gray-200/80 dark:bg-gray-600/80 box-border"
                                 >
                                     {day.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
                                 </div>
@@ -236,7 +236,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                         <div className="flex border-b border-gray-300 dark:border-gray-600">
                              <div 
                                 style={{ width: `${yAxisWidth}px` }} 
-                                className="flex-shrink-0 sticky left-0 bg-gray-200 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-600 flex items-center px-3 text-xs font-bold text-gray-700 dark:text-gray-200 z-40"
+                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 flex items-center px-3 text-xs font-bold text-gray-700 dark:text-gray-200 z-40 backdrop-blur-sm"
                             >
                                 Atividade
                             </div>
@@ -246,7 +246,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                                         <div 
                                             key={`${day.toISOString()}-${i}`}
                                             style={{ width: `${hourWidth}px` }}
-                                            className="flex-shrink-0 text-center text-[10px] text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-600 py-0.5 bg-gray-50 dark:bg-gray-700 box-border"
+                                            className="flex-shrink-0 text-center text-[10px] text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-600 py-0.5 bg-gray-50/50 dark:bg-gray-700/50 box-border"
                                         >
                                             {i.toString().padStart(2, '0')}:00
                                         </div>
@@ -290,12 +290,12 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                             <div 
                                 key={activity.id} 
                                 style={{ height: `${rowHeight}px` }} 
-                                className={`flex items-center border-b border-gray-100 dark:border-gray-700/50 relative hover:bg-blue-50 dark:hover:bg-gray-700/30 transition-colors z-10 ${index % 2 === 0 ? 'bg-transparent' : 'bg-gray-50/30 dark:bg-gray-800/50'}`}
+                                className={`flex items-center border-b border-gray-100 dark:border-gray-700/50 relative hover:bg-blue-50/50 dark:hover:bg-gray-700/30 transition-colors z-10 ${index % 2 === 0 ? 'bg-transparent' : 'bg-gray-50/30 dark:bg-gray-800/30'}`}
                             >
                                 {/* Y Axis Label (Sticky Left) */}
                                 <div 
                                     style={{ width: `${yAxisWidth}px` }}
-                                    className="flex-shrink-0 h-full px-3 sticky left-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-600 flex flex-col justify-center cursor-pointer z-20 group"
+                                    className="flex-shrink-0 h-full px-3 sticky left-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-r border-gray-200 dark:border-gray-600 flex flex-col justify-center cursor-pointer z-20 group"
                                     title={`${activity.tag} - ${activity.descricao}`}
                                     onClick={() => onEdit(activity)}
                                 >

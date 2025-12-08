@@ -48,7 +48,7 @@ const NavButton: React.FC<{
         className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
             isActive
                 ? 'bg-primary-600 text-white shadow-sm'
-                : 'text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+                : 'text-gray-700 dark:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-700/50'
         }`}
     >
         {icon}
@@ -82,7 +82,7 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     return (
-        <header className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-md shadow-sm px-4 py-2 sticky top-0 z-50 print:hidden transition-colors duration-300 border-b border-gray-200 dark:border-gray-700">
+        <header className="bg-white/70 dark:bg-gray-900/80 backdrop-blur-md shadow-sm px-4 py-2 sticky top-0 z-50 print:hidden transition-colors duration-300 border-b border-gray-200/50 dark:border-gray-700/50">
             <div className="container mx-auto">
                 <input
                     type="file"
@@ -108,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 )}
                             </div>
                             
-                            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
+                            <div className="h-6 w-px bg-gray-400/30 dark:bg-gray-600/50 mx-1"></div>
 
                             <div className="flex items-center space-x-2">
                                 <h1 className="text-lg font-bold text-gray-800 dark:text-white tracking-tight hidden sm:block">
@@ -133,13 +133,13 @@ export const Header: React.FC<HeaderProps> = ({
                             
                             <button 
                                 onClick={onOpenSettings} 
-                                className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+                                className="p-1 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-200"
                                 title="Configurações"
                             >
                                 <CogIcon className="w-5 h-5" />
                             </button>
 
-                             <button onClick={toggleTheme} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">
+                             <button onClick={toggleTheme} className="p-1 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-200">
                                 {theme === 'light' ? <MoonIcon className="w-5 h-5" /> : <SunIcon className="w-5 h-5" />}
                             </button>
                             
@@ -153,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                     </div>
 
-                    <nav className="flex items-center space-x-1 p-0.5 bg-gray-100 dark:bg-gray-900 rounded-lg overflow-x-auto max-w-full no-scrollbar w-full xl:w-auto">
+                    <nav className="flex items-center space-x-1 p-0.5 bg-gray-100/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-lg overflow-x-auto max-w-full no-scrollbar w-full xl:w-auto border border-gray-200/30 dark:border-gray-700/30">
                         <NavButton icon={<ChartPieIcon className="w-4 h-4" />} label="Dashboard" isActive={currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')} />
                         <NavButton icon={<ListBulletIcon className="w-4 h-4" />} label="Lista" isActive={currentView === 'list'} onClick={() => setCurrentView('list')} />
                         <NavButton icon={<ViewColumnsIcon className="w-4 h-4" />} label="Quadro" isActive={currentView === 'board'} onClick={() => setCurrentView('board')} />
@@ -177,13 +177,13 @@ export const Header: React.FC<HeaderProps> = ({
                         
                         <button 
                             onClick={onOpenSettings} 
-                            className="p-1.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-200"
+                            className="p-1.5 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-colors text-gray-700 dark:text-gray-200"
                             title="Configurações"
                         >
                             <CogIcon className="w-5 h-5" />
                         </button>
 
-                         <button onClick={toggleTheme} className="p-1.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-200">
+                         <button onClick={toggleTheme} className="p-1.5 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-colors text-gray-700 dark:text-gray-200">
                             {theme === 'light' ? <MoonIcon className="w-5 h-5" /> : <SunIcon className="w-5 h-5" />}
                         </button>
                         
@@ -215,7 +215,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </div>
                 </div>
 
-                <div className={`${showFilters ? 'block' : 'hidden'} lg:block mt-2 bg-gray-50/90 dark:bg-gray-700/60 p-2 rounded-lg backdrop-blur-sm border border-gray-200 dark:border-gray-600 transition-all duration-300`}>
+                <div className={`${showFilters ? 'block' : 'hidden'} lg:block mt-2 bg-white/60 dark:bg-gray-800/60 p-2 rounded-lg backdrop-blur-sm border border-gray-200/50 dark:border-gray-600/50 transition-all duration-300 shadow-sm`}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 items-end">
                         <div className="flex flex-col">
                             <label htmlFor="id-mp-filter" className="text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-0.5">ID MP</label>
@@ -223,7 +223,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 id="id-mp-filter"
                                 value={filters.idMp}
                                 onChange={(e) => setFilters({ ...filters, idMp: e.target.value })}
-                                className="w-full py-1 px-2 text-xs border rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
+                                className="w-full py-1 px-2 text-xs border rounded bg-white/80 dark:bg-gray-700/80 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
                             >
                                 <option value="">Todos</option>
                                 {idMps.map(id => <option key={id} value={id}>{id}</option>)}
@@ -235,7 +235,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 id="turno-filter"
                                 value={filters.turno}
                                 onChange={(e) => setFilters({ ...filters, turno: e.target.value })}
-                                className="w-full py-1 px-2 text-xs border rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
+                                className="w-full py-1 px-2 text-xs border rounded bg-white/80 dark:bg-gray-700/80 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
                             >
                                 {turnos.map(t => <option key={t} value={t}>{t === 'all' ? 'Todos' : `Turno ${t}`}</option>)}
                             </select>
@@ -246,7 +246,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 id="supervisor-filter"
                                 value={filters.supervisor || 'all'}
                                 onChange={(e) => setFilters({ ...filters, supervisor: e.target.value })}
-                                className="w-full py-1 px-2 text-xs border rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
+                                className="w-full py-1 px-2 text-xs border rounded bg-white/80 dark:bg-gray-700/80 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
                             >
                                 {supervisores.map(s => <option key={s} value={s}>{s === 'all' ? 'Todos' : s}</option>)}
                             </select>
@@ -257,7 +257,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 id="responsavel-filter"
                                 value={filters.responsavel}
                                 onChange={(e) => setFilters({ ...filters, responsavel: e.target.value })}
-                                className="w-full py-1 px-2 text-xs border rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
+                                className="w-full py-1 px-2 text-xs border rounded bg-white/80 dark:bg-gray-700/80 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
                             >
                                 {responsaveis.map(r => <option key={r} value={r}>{r === 'all' ? 'Todos' : r}</option>)}
                             </select>

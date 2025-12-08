@@ -135,7 +135,7 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
     const Th: React.FC<{ id: string; label: string; sortKey?: keyof Activity | 'statusLabel' }> = ({ id, label, sortKey }) => (
         <th 
             scope="col" 
-            className="relative px-3 py-2 select-none border-r border-gray-200 dark:border-gray-700 last:border-r-0 group whitespace-nowrap"
+            className="relative px-3 py-2 select-none border-r border-gray-200/50 dark:border-gray-700/50 last:border-r-0 group whitespace-nowrap"
             style={{ width: columnWidths[id] }}
         >
             <div 
@@ -157,11 +157,11 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
     );
 
     if (activities.length === 0) {
-        return <div className="text-center p-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-lg shadow">Nenhuma atividade encontrada.</div>;
+        return <div className="text-center p-8 bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow">Nenhuma atividade encontrada.</div>;
     }
 
     return (
-        <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-lg shadow overflow-x-auto">
+        <div className="bg-white/70 dark:bg-gray-900/80 backdrop-blur-md rounded-lg shadow overflow-x-auto">
             <table className="w-full text-xs text-left text-gray-500 dark:text-gray-400 table-fixed">
                 <thead className="text-xs text-gray-700 uppercase bg-gray-50/50 dark:bg-gray-700/50 dark:text-gray-300">
                     <tr>
@@ -178,13 +178,13 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                         <Th id="acoes" label="Ações" />
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                <tbody className="divide-y divide-gray-100/50 dark:divide-gray-700/50">
                     {sortedActivities.map(activity => {
                         // Conditional Formatting Logic: Open AND Start Time < Now
                         const isOverdue = activity.status === ActivityStatus.Open && new Date(activity.horaInicio) < now;
                         
                         return (
-                            <tr key={activity.id} className="bg-transparent hover:bg-gray-50/80 dark:hover:bg-gray-700/50 transition-colors">
+                            <tr key={activity.id} className="bg-transparent hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-colors">
                                 <td 
                                     className="px-3 py-1.5 font-medium text-gray-900 dark:text-white truncate overflow-hidden cursor-pointer hover:text-primary-600 hover:underline"
                                     onClick={() => onEdit(activity)}

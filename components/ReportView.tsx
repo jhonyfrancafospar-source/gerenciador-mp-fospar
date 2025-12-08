@@ -40,7 +40,7 @@ const ImageCarousel: React.FC<{ images: Attachment[], label: string, onImageClic
         return (
             <div>
                 <p className="font-medium mb-1 text-sm text-gray-600 dark:text-gray-400">{label}</p>
-                <div className="w-full aspect-square flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-md border dark:border-gray-600 text-gray-500 text-xs italic">
+                <div className="w-full aspect-square flex items-center justify-center bg-gray-100 dark:bg-gray-700/50 rounded-md border dark:border-gray-600 text-gray-500 text-xs italic">
                     Sem imagem
                 </div>
             </div>
@@ -106,7 +106,7 @@ const ImageCarousel: React.FC<{ images: Attachment[], label: string, onImageClic
 export const ReportView: React.FC<ReportViewProps> = ({ activities, onImageClick, customStatusLabels = {} }) => {
 
     if (activities.length === 0) {
-        return <div className="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow">Nenhuma atividade para exibir no relatório.</div>;
+        return <div className="text-center p-8 bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow">Nenhuma atividade para exibir no relatório.</div>;
     }
 
     // Helper to safely get image arrays (handles legacy object data or nulls)
@@ -135,6 +135,10 @@ export const ReportView: React.FC<ReportViewProps> = ({ activities, onImageClick
                         }
                          .report-card {
                             page-break-inside: avoid;
+                            background-color: white !important;
+                            color: black !important;
+                            box-shadow: none !important;
+                            border: 1px solid #ddd !important;
                          }
                     }
                 `}
@@ -146,7 +150,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ activities, onImageClick
                     const afterImages = getSafeImages(activity.afterImage);
 
                     return (
-                    <div key={activity.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 report-card">
+                    <div key={activity.id} className="bg-white/70 dark:bg-gray-900/80 backdrop-blur-md rounded-lg shadow-md p-6 mb-6 report-card border border-gray-200/50 dark:border-gray-700/50">
                         <h2 className="text-xl font-bold mb-4 border-b pb-2 dark:border-gray-600">
                             {activity.idMp ? <span className="mr-2 text-gray-500 text-sm">[{activity.idMp}]</span> : null}
                             {activity.tag} - {activity.descricao}

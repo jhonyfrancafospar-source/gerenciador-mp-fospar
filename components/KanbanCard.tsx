@@ -51,7 +51,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ activity, onEdit, onDele
         <div 
             draggable
             onDragStart={handleDragStart}
-            className="bg-white/90 dark:bg-gray-700/90 backdrop-blur-sm rounded-lg shadow-md border-l-4 border-primary-500 overflow-hidden flex flex-col cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow-md border-l-4 border-primary-500 overflow-hidden flex flex-col cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
         >
             
             {hasImages && (
@@ -65,11 +65,11 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ activity, onEdit, onDele
                 <div className="flex justify-between items-start">
                     <p className="font-semibold text-gray-800 dark:text-white flex-1 pr-2 text-sm">{activity.descricao}</p>
                      <div className="flex space-x-1 flex-shrink-0">
-                        <button onClick={() => onEdit(activity)} className="text-gray-400 hover:text-primary-500 dark:hover:text-primary-400">
+                        <button onClick={() => onEdit(activity)} className="text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400">
                             <PencilIcon className="w-4 h-4" />
                         </button>
                         {onDelete && (
-                            <button onClick={() => onDelete(activity.id)} className="text-gray-400 hover:text-red-500">
+                            <button onClick={() => onDelete(activity.id)} className="text-gray-500 hover:text-red-500 dark:text-gray-400">
                                 <TrashIcon className="w-4 h-4" />
                             </button>
                         )}
@@ -80,18 +80,18 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ activity, onEdit, onDele
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${getCriticidadeClasses(activity.criticidade)}`}>
                         {activity.criticidade}
                     </span>
-                     <span className="text-[10px] bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded text-gray-600 dark:text-gray-300 font-mono">
+                     <span className="text-[10px] bg-gray-200/80 dark:bg-gray-600/80 px-2 py-0.5 rounded text-gray-600 dark:text-gray-300 font-mono">
                         {activity.tag}
                     </span>
                 </div>
 
-                <div className="text-xs text-gray-500 dark:text-gray-300 space-y-2 pt-1 border-t border-gray-100 dark:border-gray-600 mt-2">
+                <div className="text-xs text-gray-600 dark:text-gray-300 space-y-2 pt-1 border-t border-gray-200/50 dark:border-gray-600/50 mt-2">
                     <div className="flex items-center space-x-2 pt-2">
                         <UserIcon className="w-3 h-3" />
                         <span className="truncate">{activity.responsavel}</span>
                     </div>
                     {activity.supervisor && (
-                         <div className="flex items-center space-x-2 text-gray-400">
+                         <div className="flex items-center space-x-2 text-gray-500 dark:text-gray-400">
                             <span className="w-3 h-3 flex items-center justify-center font-bold text-[8px]">S</span>
                             <span className="truncate">Sup: {activity.supervisor}</span>
                         </div>

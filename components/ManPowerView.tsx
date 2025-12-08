@@ -56,12 +56,12 @@ export const ManPowerView: React.FC<ManPowerViewProps> = ({ activities }) => {
     const totalHHMinutes = data.reduce((sum, item) => sum + item.totalManMinutes, 0);
 
     if (activities.length === 0) {
-        return <div className="text-center p-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-lg shadow text-gray-800 dark:text-gray-200">Nenhuma atividade encontrada.</div>;
+        return <div className="text-center p-8 bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow text-gray-800 dark:text-gray-200">Nenhuma atividade encontrada.</div>;
     }
 
     return (
         <div className="space-y-6 text-gray-900 dark:text-gray-100">
-            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md p-6 rounded-lg shadow-lg flex justify-between items-center">
+            <div className="bg-white/70 dark:bg-gray-900/80 backdrop-blur-md p-6 rounded-lg shadow-lg flex justify-between items-center border border-gray-200/50 dark:border-gray-700/50">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Cálculo Homem x Hora</h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Baseado na duração e quantidade de responsáveis por atividade.</p>
@@ -72,7 +72,7 @@ export const ManPowerView: React.FC<ManPowerViewProps> = ({ activities }) => {
                 </div>
             </div>
 
-            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-lg shadow overflow-x-auto">
+            <div className="bg-white/70 dark:bg-gray-900/80 backdrop-blur-md rounded-lg shadow overflow-x-auto border border-gray-200/50 dark:border-gray-700/50">
                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-300">
                     <thead className="text-xs text-gray-700 dark:text-white uppercase bg-gray-50/50 dark:bg-gray-700/50">
                         <tr>
@@ -85,7 +85,7 @@ export const ManPowerView: React.FC<ManPowerViewProps> = ({ activities }) => {
                     </thead>
                     <tbody>
                         {data.map(row => (
-                            <tr key={row.id} className="border-b dark:border-gray-700 hover:bg-gray-50/50 dark:hover:bg-gray-600/50 transition-colors">
+                            <tr key={row.id} className="border-b dark:border-gray-700/50 hover:bg-gray-50/50 dark:hover:bg-gray-600/30 transition-colors">
                                 <td className="px-6 py-4">
                                     <div className="font-bold text-gray-900 dark:text-white">{row.tag}</div>
                                     <div className="text-xs truncate max-w-xs text-gray-600 dark:text-gray-400" title={row.descricao}>{row.descricao}</div>

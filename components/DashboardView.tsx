@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import type { Activity } from '../types';
 import { ActivityStatus, Criticidade } from '../types';
@@ -76,7 +77,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activities, custom
 
     if (activities.length === 0) {
         return (
-            <div className="flex items-center justify-center h-96 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-lg shadow-lg">
+            <div className="flex items-center justify-center h-96 bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow-lg">
                 <p className="text-lg text-gray-500 dark:text-gray-400">Nenhuma atividade encontrada para os filtros selecionados.</p>
             </div>
         );
@@ -102,7 +103,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activities, custom
 
     // Chart Toggle Component
     const ChartToggle = ({ current, onChange }: { current: ChartType, onChange: (t: ChartType) => void }) => (
-        <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1 space-x-1">
+        <div className="flex bg-gray-100/50 dark:bg-gray-700/50 rounded-lg p-1 space-x-1">
             {[
                 { type: 'bar', label: 'Barras', icon: <ChartBarIcon className="w-4 h-4"/> },
                 { type: 'pie', label: 'Pizza', icon: <ChartPieIcon className="w-4 h-4"/> },
@@ -113,7 +114,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activities, custom
                     onClick={() => onChange(opt.type as ChartType)}
                     className={`flex items-center space-x-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                         current === opt.type 
-                            ? 'bg-white dark:bg-gray-600 text-primary-600 dark:text-white shadow-sm' 
+                            ? 'bg-white/80 dark:bg-gray-600/80 text-primary-600 dark:text-white shadow-sm' 
                             : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                     }`}
                     title={`Visualizar como ${opt.label}`}
@@ -186,7 +187,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activities, custom
     return (
         <div className="space-y-6 text-gray-900 dark:text-gray-100">
             {/* Progress Bar Section */}
-            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md p-6 rounded-lg shadow-lg border border-gray-100 dark:border-gray-700">
+            <div className="bg-white/70 dark:bg-gray-900/80 backdrop-blur-md p-6 rounded-lg shadow-lg border border-gray-200/50 dark:border-gray-700/50">
                 <div className="flex justify-between items-end mb-4">
                     <div>
                         <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Dashboard Geral</h2>
@@ -213,7 +214,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activities, custom
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 
                 {/* Chart 1: Status Analysis */}
-                <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md p-6 rounded-lg shadow-lg border border-gray-100 dark:border-gray-700 flex flex-col h-[400px]">
+                <div className="bg-white/70 dark:bg-gray-900/80 backdrop-blur-md p-6 rounded-lg shadow-lg border border-gray-200/50 dark:border-gray-700/50 flex flex-col h-[400px]">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">Atividades por Status</h3>
                         <ChartToggle current={statusChartType} onChange={setStatusChartType} />
@@ -224,7 +225,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activities, custom
                 </div>
 
                 {/* Chart 2: Criticality Analysis */}
-                <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md p-6 rounded-lg shadow-lg border border-gray-100 dark:border-gray-700 flex flex-col h-[400px]">
+                <div className="bg-white/70 dark:bg-gray-900/80 backdrop-blur-md p-6 rounded-lg shadow-lg border border-gray-200/50 dark:border-gray-700/50 flex flex-col h-[400px]">
                      <div className="flex justify-between items-center mb-6">
                         <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">Atividades por Criticidade</h3>
                         <ChartToggle current={critChartType} onChange={setCritChartType} />
@@ -238,7 +239,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ activities, custom
             {/* KPI Summary Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {statusData.map((item) => (
-                    <div key={item.name} className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md p-4 rounded-lg shadow border-l-4 flex flex-col justify-between transition-transform hover:scale-105" style={{ borderColor: item.color }}>
+                    <div key={item.name} className="bg-white/70 dark:bg-gray-900/80 backdrop-blur-md p-4 rounded-lg shadow border-l-4 flex flex-col justify-between transition-transform hover:scale-105" style={{ borderColor: item.color }}>
                         <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate font-bold" title={item.name}>
                             {item.name}
                         </p>
