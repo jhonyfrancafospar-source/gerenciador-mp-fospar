@@ -4,7 +4,6 @@ import type { User } from '../types';
 
 interface LoginViewProps {
     onLogin: (username: string, password: string) => void;
-    onMicrosoftLogin?: () => void;
     onRegister: (user: User) => void;
     onRecoverPassword: (username: string, name: string, newPassword: string) => boolean;
     onRecoverUsername: (name: string) => string | null;

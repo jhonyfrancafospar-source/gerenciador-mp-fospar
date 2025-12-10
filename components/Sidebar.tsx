@@ -12,6 +12,7 @@ import { ArrowRightOnRectangleIcon } from './icons/ArrowRightOnRectangleIcon';
 import { UserIcon } from './icons/UserIcon';
 import { CogIcon } from './icons/CogIcon';
 import { CalendarIcon } from './icons/CalendarIcon';
+import { PresentationChartLineIcon } from './icons/PresentationChartLineIcon';
 
 interface SidebarProps {
     currentView: ViewType;
@@ -90,6 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <NavItem icon={<ListBulletIcon className="w-5 h-5" />} label="Lista" isActive={currentView === 'list'} onClick={() => handleNavClick('list')} />
                         <NavItem icon={<CalendarIcon className="w-5 h-5" />} label="Calendário" isActive={currentView === 'calendar'} onClick={() => handleNavClick('calendar')} />
                         <NavItem icon={<ChartBarIcon className="w-5 h-5" />} label="Gantt" isActive={currentView === 'gantt'} onClick={() => handleNavClick('gantt')} />
+                        <NavItem icon={<PresentationChartLineIcon className="w-5 h-5" />} label="Curva S" isActive={currentView === 'scurve'} onClick={() => handleNavClick('scurve')} />
                         
                         <p className="px-4 text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-2 mt-6">Relatórios</p>
                         

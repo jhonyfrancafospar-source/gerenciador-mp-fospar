@@ -1,5 +1,5 @@
 
-export type ViewType = 'dashboard' | 'list' | 'board' | 'gantt' | 'report' | 'audit' | 'manpower' | 'calendar';
+export type ViewType = 'dashboard' | 'list' | 'board' | 'gantt' | 'report' | 'audit' | 'manpower' | 'calendar' | 'scurve';
 
 export type FilterType = {
     turno: string;
@@ -62,8 +62,8 @@ export interface AuditLogEntry {
 }
 
 export interface User {
-    username: string; // Email for MS accounts
-    password?: string; // Optional for MS accounts
+    username: string; 
+    password?: string;
     name: string; 
     role: 'admin' | 'user';
     profilePicture?: string;
@@ -71,7 +71,6 @@ export interface User {
     // System preferences (usually stored on admin user)
     logoLight?: string;
     logoDark?: string;
-    isMicrosoftAccount?: boolean;
 }
 
 export interface Activity {

@@ -10,6 +10,7 @@ import { ReportView } from './components/ReportView';
 import { AuditLogView } from './components/AuditLogView';
 import { ManPowerView } from './components/ManPowerView';
 import { ActivityCalendarView } from './components/ActivityCalendarView';
+import { SCurveView } from './components/SCurveView';
 import { Modal } from './components/Modal';
 import { ActivityForm } from './components/ActivityForm';
 import { LoginView } from './components/LoginView';
@@ -870,6 +871,7 @@ const App: React.FC = () => {
             case 'board': return <ActivityBoardView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={handleDeleteActivity} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'calendar': return <ActivityCalendarView activities={filteredAndSortedActivities} onEdit={openEditModal} customStatusLabels={statusLabels} onDateChange={handleActivityDateChange} />;
             case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} />;
+            case 'scurve': return <SCurveView activities={filteredAndSortedActivities} />;
             case 'report': return <ReportView activities={filteredAndSortedActivities} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'audit': return <AuditLogView logs={auditLogs} />;
             case 'manpower': return <ManPowerView activities={filteredAndSortedActivities} />;

@@ -17,6 +17,7 @@ import { CalculatorIcon } from './icons/CalculatorIcon';
 import { CalendarIcon } from './icons/CalendarIcon';
 import { FunnelIcon } from './icons/FunnelIcon';
 import { ChevronUpIcon } from './icons/ChevronUpIcon';
+import { PresentationChartLineIcon } from './icons/PresentationChartLineIcon';
 
 interface HeaderProps {
     theme: 'light' | 'dark';
@@ -159,6 +160,7 @@ export const Header: React.FC<HeaderProps> = ({
                         <NavButton icon={<ViewColumnsIcon className="w-4 h-4" />} label="Quadro" isActive={currentView === 'board'} onClick={() => setCurrentView('board')} />
                         <NavButton icon={<CalendarIcon className="w-4 h-4" />} label="Calendário" isActive={currentView === 'calendar'} onClick={() => setCurrentView('calendar')} />
                         <NavButton icon={<ChartBarIcon className="w-4 h-4" />} label="Gantt" isActive={currentView === 'gantt'} onClick={() => setCurrentView('gantt')} />
+                        <NavButton icon={<PresentationChartLineIcon className="w-4 h-4" />} label="Curva S" isActive={currentView === 'scurve'} onClick={() => setCurrentView('scurve')} />
                         <NavButton icon={<DocumentTextIcon className="w-4 h-4" />} label="Relatório" isActive={currentView === 'report'} onClick={() => setCurrentView('report')} />
                         <NavButton icon={<CalculatorIcon className="w-4 h-4" />} label="H x H" isActive={currentView === 'manpower'} onClick={() => setCurrentView('manpower')} />
                         <NavButton icon={<ClockHistoryIcon className="w-4 h-4" />} label="Histórico" isActive={currentView === 'audit'} onClick={() => setCurrentView('audit')} />
