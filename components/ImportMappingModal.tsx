@@ -59,6 +59,7 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         { label: 'MM/DD/AAAA (ex: 12/31/2023)', value: 'MM/DD/AAAA' },
         { label: 'AAAA-MM-DD (ex: 2023-12-31)', value: 'AAAA-MM-DD' },
         { label: 'DD-MM-AAAA (ex: 31-12-2023)', value: 'DD-MM-AAAA' },
+        { label: 'DD/MMM/AA (ex: 11/Dez/25)', value: 'DD/MMM/AA' },
     ];
 
     const autoMap = () => {

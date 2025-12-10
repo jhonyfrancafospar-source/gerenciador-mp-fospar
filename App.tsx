@@ -587,6 +587,28 @@ const App: React.FC = () => {
             if (typeof val !== 'string' || !val.trim()) return null;
             
             const dateStr = val.trim();
+            
+            // Special handling for DD/MMM/AA (ex: 11/Dez/25)
+            if (format === 'DD/MMM/AA') {
+                const parts = dateStr.split(/[\/\-\. ]/);
+                if (parts.length === 3) {
+                    const d = parseInt(parts[0]);
+                    const mStr = parts[1].toLowerCase().slice(0,3);
+                    let y = parseInt(parts[2]);
+
+                    const months: {[k:string]: number} = {
+                        'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5,
+                        'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11
+                    };
+
+                    if (months[mStr] !== undefined && !isNaN(d) && !isNaN(y)) {
+                        if (y < 100) y += 2000;
+                        return new Date(y, months[mStr], d);
+                    }
+                }
+                return null;
+            }
+
             // Default expected format parts (separator agnostic)
             const parts = dateStr.split(/[\/\-\.]/);
             
