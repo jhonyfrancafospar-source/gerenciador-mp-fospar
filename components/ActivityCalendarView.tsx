@@ -105,7 +105,8 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
                             title={`${act.tag} - ${act.descricao}`}
                         >
                             <span className="font-bold mr-1">{new Date(act.horaInicio).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                            {act.tag}
+                            <span className="font-semibold mr-1">{act.tag}</span>
+                            <span className="opacity-90">- {act.descricao}</span>
                         </div>
                     ))}
                 </div>

@@ -34,6 +34,7 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
         responsavel: 130,
         supervisor: 130,
         turno: 70,
+        data: 90, // Nova coluna
         horario: 110,
         duracao: 70,
         criticidade: 90,
@@ -170,6 +171,7 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                         <Th id="responsavel" label="Responsável" sortKey="responsavel" />
                         <Th id="supervisor" label="Supervisor" sortKey="supervisor" />
                         <Th id="turno" label="Turno" sortKey="turno" />
+                        <Th id="data" label="Data" sortKey="horaInicio" />
                         <Th id="horario" label="Horário" sortKey="horaInicio" />
                         <Th id="duracao" label="Duração" sortKey="duracao" />
                         <Th id="criticidade" label="Criticidade" sortKey="criticidade" />
@@ -202,6 +204,9 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                                 <td className="px-3 py-1.5 truncate overflow-hidden">{activity.responsavel}</td>
                                 <td className="px-3 py-1.5 truncate overflow-hidden">{activity.supervisor}</td>
                                 <td className="px-3 py-1.5 truncate overflow-hidden text-center">{activity.turno}</td>
+                                <td className="px-3 py-1.5 truncate overflow-hidden text-center">
+                                    {new Date(activity.horaInicio).toLocaleDateString('pt-BR')}
+                                </td>
                                 <td className={`px-3 py-1.5 truncate overflow-hidden ${isOverdue ? 'text-red-600 font-bold dark:text-red-400' : ''}`}>
                                     {new Date(activity.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(activity.horaFim).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </td>
