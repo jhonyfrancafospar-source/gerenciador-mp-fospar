@@ -1,5 +1,5 @@
 
-export type ViewType = 'dashboard' | 'list' | 'board' | 'gantt' | 'report' | 'audit' | 'manpower' | 'calendar' | 'scurve';
+export type ViewType = 'dashboard' | 'list' | 'board' | 'gantt' | 'report' | 'audit' | 'manpower' | 'calendar';
 
 export type FilterType = {
     turno: string;
