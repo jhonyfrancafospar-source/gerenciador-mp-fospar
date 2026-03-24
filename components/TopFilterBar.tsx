@@ -7,6 +7,7 @@ import { MoonIcon } from './icons/MoonIcon';
 import { DocumentArrowDownIcon } from './icons/DocumentArrowDownIcon';
 import { FunnelIcon } from './icons/FunnelIcon';
 import { ChevronUpIcon } from './icons/ChevronUpIcon';
+import { PrinterIcon } from './icons/PrinterIcon';
 
 interface TopFilterBarProps {
     theme: 'light' | 'dark';
@@ -80,6 +81,15 @@ export const TopFilterBar: React.FC<TopFilterBarProps> = ({
                     >
                        <DocumentArrowDownIcon className="w-4 h-4" />
                        <span className="hidden sm:inline">Importar</span>
+                    </button>
+
+                    <button
+                        onClick={() => window.print()}
+                        className="flex items-center space-x-1 px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-sm"
+                        title="Imprimir Lista"
+                    >
+                       <PrinterIcon className="w-4 h-4" />
+                       <span className="hidden sm:inline">Imprimir</span>
                     </button>
 
                     <button 

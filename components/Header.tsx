@@ -17,6 +17,9 @@ import { CalculatorIcon } from './icons/CalculatorIcon';
 import { CalendarIcon } from './icons/CalendarIcon';
 import { FunnelIcon } from './icons/FunnelIcon';
 import { ChevronUpIcon } from './icons/ChevronUpIcon';
+import { PrinterIcon } from './icons/PrinterIcon';
+import { SearchIcon } from './icons/SearchIcon';
+import { XMarkIcon } from './icons/XMarkIcon';
 
 interface HeaderProps {
     theme: 'light' | 'dark';
@@ -77,6 +80,14 @@ export const Header: React.FC<HeaderProps> = ({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [showFilters, setShowFilters] = useState(false);
 
+    const handlePrint = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Printing initiated...');
+        window.focus();
+        window.print();
+    };
+
     const handleImportClick = () => {
         fileInputRef.current?.click();
     };
@@ -122,30 +133,44 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
 
                         {/* Mobile Actions Group */}
-                        <div className="flex items-center gap-1 xl:hidden">
-                             <button
-                                onClick={handleImportClick}
-                                className="p-1 rounded-md bg-green-600 text-white shadow-sm"
-                                title="Importar"
-                            >
-                               <DocumentArrowDownIcon className="w-4 h-4" />
-                            </button>
+                        <div className="flex items-center gap-2 xl:hidden">
+                            <div className="flex flex-col gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={handleImportClick}
+                                    className="p-2 rounded-md bg-green-600 hover:bg-green-700 text-white shadow-sm transition-colors flex items-center justify-center"
+                                    title="Importar"
+                                >
+                                   <DocumentArrowDownIcon className="w-5 h-5" />
+                                </button>
+                                
+                                <button
+                                    type="button"
+                                    onClick={(e) => handlePrint(e)}
+                                    className="p-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors flex items-center justify-center"
+                                    title="Imprimir"
+                                >
+                                    <PrinterIcon className="w-5 h-5 pointer-events-none" />
+                                </button>
+                            </div>
                             
-                            <button 
-                                onClick={onOpenSettings} 
-                                className="p-1 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-200"
-                                title="Configurações"
-                            >
-                                <CogIcon className="w-5 h-5" />
-                            </button>
-
-                             <button onClick={toggleTheme} className="p-1 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-200">
-                                {theme === 'light' ? <MoonIcon className="w-5 h-5" /> : <SunIcon className="w-5 h-5" />}
-                            </button>
+                            <div className="flex flex-col gap-1">
+                                <button 
+                                    onClick={onOpenSettings} 
+                                    className="p-1 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-200"
+                                    title="Configurações"
+                                >
+                                    <CogIcon className="w-5 h-5" />
+                                </button>
+    
+                                 <button onClick={toggleTheme} className="p-1 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-200">
+                                    {theme === 'light' ? <MoonIcon className="w-5 h-5" /> : <SunIcon className="w-5 h-5" />}
+                                </button>
+                            </div>
                             
                             <button 
                                 onClick={() => setShowFilters(!showFilters)}
-                                className={`p-1 rounded-md transition-colors ml-1 ${showFilters ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                                className={`p-1 h-full rounded-md transition-colors ml-1 ${showFilters ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                                 title="Filtrar"
                             >
                                 <FunnelIcon className="w-5 h-5" />
@@ -165,27 +190,42 @@ export const Header: React.FC<HeaderProps> = ({
                     </nav>
                     
                     {/* Desktop Actions */}
-                    <div className="hidden xl:flex items-center space-x-2 justify-end w-full xl:w-auto">
-                        <button
-                            onClick={handleImportClick}
-                            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md text-xs font-medium bg-green-600 hover:bg-green-700 text-white transition-colors shadow-sm"
-                            title="Importar Excel"
-                        >
-                           <DocumentArrowDownIcon className="w-4 h-4" />
-                           <span className="hidden sm:inline">Importar</span>
-                        </button>
+                    <div className="hidden xl:flex items-center space-x-3 justify-end w-full xl:w-auto">
+                        <div className="flex flex-col gap-1.5">
+                            <button
+                                type="button"
+                                onClick={handleImportClick}
+                                className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-green-600 hover:bg-green-700 text-white transition-colors shadow-sm"
+                                title="Importar Excel"
+                            >
+                               <DocumentArrowDownIcon className="w-4 h-4" />
+                               <span>Importar</span>
+                            </button>
+                            
+                            <button
+                                type="button"
+                                onClick={(e) => handlePrint(e)}
+                                className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-sm"
+                                title="Imprimir Lista"
+                            >
+                                <PrinterIcon className="w-4 h-4 pointer-events-none" />
+                                <span>Imprimir</span>
+                            </button>
+                        </div>
                         
-                        <button 
-                            onClick={onOpenSettings} 
-                            className="p-1.5 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-colors text-gray-700 dark:text-gray-200"
-                            title="Configurações"
-                        >
-                            <CogIcon className="w-5 h-5" />
-                        </button>
+                        <div className="flex items-center space-x-1">
+                            <button 
+                                onClick={onOpenSettings} 
+                                className="p-1.5 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-colors text-gray-700 dark:text-gray-200"
+                                title="Configurações"
+                            >
+                                <CogIcon className="w-5 h-5" />
+                            </button>
 
-                         <button onClick={toggleTheme} className="p-1.5 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-colors text-gray-700 dark:text-gray-200">
-                            {theme === 'light' ? <MoonIcon className="w-5 h-5" /> : <SunIcon className="w-5 h-5" />}
-                        </button>
+                             <button onClick={toggleTheme} className="p-1.5 rounded-full hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-colors text-gray-700 dark:text-gray-200">
+                                {theme === 'light' ? <MoonIcon className="w-5 h-5" /> : <SunIcon className="w-5 h-5" />}
+                            </button>
+                        </div>
                         
                         {user && (
                             <div className="flex items-center border-l border-gray-300 dark:border-gray-600 pl-2 ml-2 space-x-2">
@@ -216,6 +256,28 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
 
                 <div className={`${showFilters ? 'block' : 'hidden'} lg:block mt-2 bg-white/60 dark:bg-gray-800/60 p-2 rounded-lg backdrop-blur-sm border border-gray-200/50 dark:border-gray-600/50 transition-all duration-300 shadow-sm`}>
+                    {/* Search Bar */}
+                    <div className="mb-3 relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <SearchIcon className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="Pesquisar por Tag, Descrição, Responsável, Supervisor, ID MP ou Área..."
+                            value={filters.search}
+                            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                            className="block w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white/80 dark:bg-gray-700/80 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-all"
+                        />
+                        {filters.search && (
+                            <button
+                                onClick={() => setFilters({ ...filters, search: '' })}
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                            >
+                                <XMarkIcon className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 items-end">
                         <div className="flex flex-col">
                             <label htmlFor="id-mp-filter" className="text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-0.5">ID MP</label>
@@ -263,7 +325,7 @@ export const Header: React.FC<HeaderProps> = ({
                             </select>
                         </div>
                         
-                        <div className="flex items-center pb-1">
+                        <div className="flex items-center pb-1 space-x-2">
                              <label className="inline-flex items-center cursor-pointer">
                                 <input 
                                     type="checkbox" 
@@ -275,6 +337,20 @@ export const Header: React.FC<HeaderProps> = ({
                                 <div className="relative w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
                                 <span className="ms-2 text-xs font-bold text-gray-700 dark:text-gray-200">Minhas Atividades</span>
                             </label>
+
+                            <button
+                                onClick={() => setFilters({
+                                    turno: 'all',
+                                    responsavel: 'all',
+                                    supervisor: 'all',
+                                    idMp: '',
+                                    search: '',
+                                    onlyMyActivities: false
+                                })}
+                                className="ml-auto text-[10px] font-bold text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 uppercase tracking-wider transition-colors"
+                            >
+                                Limpar
+                            </button>
                         </div>
                     </div>
 

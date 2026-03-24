@@ -64,6 +64,7 @@ const App: React.FC = () => {
         responsavel: 'all', 
         supervisor: 'all',
         idMp: '',
+        search: '',
         onlyMyActivities: false
     });
 
@@ -853,7 +854,18 @@ const App: React.FC = () => {
                     (activity.supervisor && activity.supervisor.toLowerCase().includes(user.name.toLowerCase()))
                 )
             );
-            return turnoMatch && responsavelMatch && supervisorMatch && idMpMatch && myActivitiesMatch;
+            
+            const searchLower = filters.search.toLowerCase();
+            const searchMatch = !filters.search || (
+                activity.tag.toLowerCase().includes(searchLower) ||
+                activity.descricao.toLowerCase().includes(searchLower) ||
+                activity.responsavel.toLowerCase().includes(searchLower) ||
+                (activity.supervisor && activity.supervisor.toLowerCase().includes(searchLower)) ||
+                (activity.idMp && activity.idMp.toLowerCase().includes(searchLower)) ||
+                activity.area.toLowerCase().includes(searchLower)
+            );
+
+            return turnoMatch && responsavelMatch && supervisorMatch && idMpMatch && myActivitiesMatch && searchMatch;
         });
         return filtered;
     }, [activities, filters, user]);

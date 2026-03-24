@@ -7,6 +7,7 @@ export type FilterType = {
     supervisor: string;
     // date removed
     idMp: string;
+    search: string;
     onlyMyActivities: boolean;
     isOnline?: boolean;
 };

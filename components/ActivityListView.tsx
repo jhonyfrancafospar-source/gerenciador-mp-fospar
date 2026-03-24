@@ -133,10 +133,10 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
         };
     }, []);
 
-    const Th: React.FC<{ id: string; label: string; sortKey?: keyof Activity | 'statusLabel' }> = ({ id, label, sortKey }) => (
+    const Th: React.FC<{ id: string; label: string; sortKey?: keyof Activity | 'statusLabel'; className?: string }> = ({ id, label, sortKey, className = '' }) => (
         <th 
             scope="col" 
-            className="relative px-3 py-2 select-none border-r border-gray-200/50 dark:border-gray-700/50 last:border-r-0 group whitespace-nowrap"
+            className={`relative px-3 py-2 select-none border-r border-gray-200/50 dark:border-gray-700/50 last:border-r-0 group whitespace-nowrap ${className}`}
             style={{ width: columnWidths[id] }}
         >
             <div 
@@ -163,6 +163,10 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
 
     return (
         <div className="bg-white/70 dark:bg-gray-900/80 backdrop-blur-md rounded-lg shadow overflow-x-auto">
+            <div className="hidden print:block text-center py-4 border-b mb-4">
+                <h1 className="text-xl font-bold text-black">Lista de Atividades</h1>
+                <p className="text-xs text-gray-600">Gerado em {new Date().toLocaleString('pt-BR')}</p>
+            </div>
             <table className="w-full text-xs text-left text-gray-500 dark:text-gray-400 table-fixed">
                 <thead className="text-xs text-gray-700 uppercase bg-gray-50/50 dark:bg-gray-700/50 dark:text-gray-300">
                     <tr>
@@ -176,8 +180,8 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                         <Th id="duracao" label="Duração" sortKey="duracao" />
                         <Th id="criticidade" label="Criticidade" sortKey="criticidade" />
                         <Th id="status" label="Status" sortKey="statusLabel" />
-                        <Th id="anexos" label="Anexos" />
-                        <Th id="acoes" label="Ações" />
+                        <Th id="anexos" label="Anexos" className="print:hidden" />
+                        <Th id="acoes" label="Ações" className="print:hidden" />
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100/50 dark:divide-gray-700/50">
@@ -217,19 +221,24 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                                     </span>
                                 </td>
                                 <td className="px-3 py-1.5">
-                                    <select 
-                                        value={activity.status}
-                                        onChange={(e) => handleStatusChange(activity.id, e.target.value)}
-                                        className={`w-full p-0.5 rounded text-[10px] focus:ring-primary-500 focus:border-primary-500 cursor-pointer ${getStatusClasses(activity.status, true)}`}
-                                    >
-                                        {Object.values(ActivityStatus).map(s => (
-                                            <option key={s} value={s} className="text-gray-800 bg-white">
-                                                {getStatusLabel(s, customStatusLabels)}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <div className="print:hidden">
+                                        <select 
+                                            value={activity.status}
+                                            onChange={(e) => handleStatusChange(activity.id, e.target.value)}
+                                            className={`w-full p-0.5 rounded text-[10px] focus:ring-primary-500 focus:border-primary-500 cursor-pointer ${getStatusClasses(activity.status, true)}`}
+                                        >
+                                            {Object.values(ActivityStatus).map(s => (
+                                                <option key={s} value={s} className="text-gray-800 bg-white">
+                                                    {getStatusLabel(s, customStatusLabels)}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="hidden print:block text-[10px]">
+                                        {getStatusLabel(activity.status, customStatusLabels)}
+                                    </div>
                                 </td>
-                                <td className="px-3 py-1.5">
+                                <td className="px-3 py-1.5 print:hidden">
                                     <div className="flex items-center justify-center space-x-1 text-gray-500 dark:text-gray-400">
                                         {(activity.beforeImage || activity.afterImage) && (
                                             <span title="Contém imagem de antes/depois">
@@ -244,7 +253,7 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                                         )}
                                     </div>
                                 </td>
-                                <td className="px-3 py-1.5 text-center">
+                                <td className="px-3 py-1.5 text-center print:hidden">
                                     <div className="flex items-center justify-center space-x-2">
                                         <button onClick={() => onEdit(activity)} className="text-primary-600 hover:text-primary-800 dark:text-primary-500 dark:hover:text-primary-300 transition-colors" title="Editar">
                                             <PencilIcon className="w-4 h-4"/>
