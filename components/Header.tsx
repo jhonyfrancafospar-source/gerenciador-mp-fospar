@@ -38,7 +38,6 @@ interface HeaderProps {
     onOpenSettings: () => void;
     isOnline?: boolean;
     systemLogos?: { light?: string; dark?: string };
-    onPrint: () => void;
 }
 
 const NavButton: React.FC<{
@@ -76,11 +75,18 @@ export const Header: React.FC<HeaderProps> = ({
     onLogout,
     onOpenSettings,
     isOnline = true,
-    systemLogos,
-    onPrint
+    systemLogos
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [showFilters, setShowFilters] = useState(false);
+
+    const handlePrint = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Printing initiated...');
+        window.focus();
+        window.print();
+    };
 
     const handleImportClick = () => {
         fileInputRef.current?.click();
@@ -140,11 +146,11 @@ export const Header: React.FC<HeaderProps> = ({
                                 
                                 <button
                                     type="button"
-                                    onClick={onPrint}
+                                    onClick={(e) => handlePrint(e)}
                                     className="p-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors flex items-center justify-center"
                                     title="Imprimir"
                                 >
-                                    <PrinterIcon className="w-5 h-5" />
+                                    <PrinterIcon className="w-5 h-5 pointer-events-none" />
                                 </button>
                             </div>
                             
@@ -198,11 +204,11 @@ export const Header: React.FC<HeaderProps> = ({
                             
                             <button
                                 type="button"
-                                onClick={onPrint}
+                                onClick={(e) => handlePrint(e)}
                                 className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-sm"
                                 title="Imprimir Lista"
                             >
-                                <PrinterIcon className="w-4 h-4" />
+                                <PrinterIcon className="w-4 h-4 pointer-events-none" />
                                 <span>Imprimir</span>
                             </button>
                         </div>
@@ -275,18 +281,15 @@ export const Header: React.FC<HeaderProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 items-end">
                         <div className="flex flex-col">
                             <label htmlFor="id-mp-filter" className="text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-0.5">ID MP</label>
-                            <input
+                            <select
                                 id="id-mp-filter"
-                                list="id-mps-list"
                                 value={filters.idMp}
                                 onChange={(e) => setFilters({ ...filters, idMp: e.target.value })}
-                                placeholder="Filtrar ID MP..."
                                 className="w-full py-1 px-2 text-xs border rounded bg-white/80 dark:bg-gray-700/80 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
-                            />
-                            <datalist id="id-mps-list">
+                            >
                                 <option value="">Todos</option>
-                                {idMps.map(id => <option key={id} value={id} />)}
-                            </datalist>
+                                {idMps.map(id => <option key={id} value={id}>{id}</option>)}
+                            </select>
                         </div>
                         <div className="flex flex-col">
                             <label htmlFor="turno-filter" className="text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-0.5">Turno</label>
@@ -299,35 +302,27 @@ export const Header: React.FC<HeaderProps> = ({
                                 {turnos.map(t => <option key={t} value={t}>{t === 'all' ? 'Todos' : `Turno ${t}`}</option>)}
                             </select>
                         </div>
-                        <div className="flex flex-col">
+                         <div className="flex flex-col">
                             <label htmlFor="supervisor-filter" className="text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-0.5">Supervisor</label>
-                            <input
+                            <select
                                 id="supervisor-filter"
-                                list="supervisores-list"
-                                value={filters.supervisor === 'all' ? '' : filters.supervisor}
-                                onChange={(e) => setFilters({ ...filters, supervisor: e.target.value || 'all' })}
-                                placeholder="Filtrar Supervisor..."
+                                value={filters.supervisor || 'all'}
+                                onChange={(e) => setFilters({ ...filters, supervisor: e.target.value })}
                                 className="w-full py-1 px-2 text-xs border rounded bg-white/80 dark:bg-gray-700/80 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
-                            />
-                            <datalist id="supervisores-list">
-                                <option value="all">Todos</option>
-                                {supervisores.filter(s => s !== 'all').map(s => <option key={s} value={s} />)}
-                            </datalist>
+                            >
+                                {supervisores.map(s => <option key={s} value={s}>{s === 'all' ? 'Todos' : s}</option>)}
+                            </select>
                         </div>
                         <div className="flex flex-col">
                             <label htmlFor="responsavel-filter" className="text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-0.5">Responsável</label>
-                            <input
+                            <select
                                 id="responsavel-filter"
-                                list="responsaveis-list"
-                                value={filters.responsavel === 'all' ? '' : filters.responsavel}
-                                onChange={(e) => setFilters({ ...filters, responsavel: e.target.value || 'all' })}
-                                placeholder="Filtrar Responsável..."
+                                value={filters.responsavel}
+                                onChange={(e) => setFilters({ ...filters, responsavel: e.target.value })}
                                 className="w-full py-1 px-2 text-xs border rounded bg-white/80 dark:bg-gray-700/80 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
-                            />
-                            <datalist id="responsaveis-list">
-                                <option value="all">Todos</option>
-                                {responsaveis.filter(r => r !== 'all').map(r => <option key={r} value={r} />)}
-                            </datalist>
+                            >
+                                {responsaveis.map(r => <option key={r} value={r}>{r === 'all' ? 'Todos' : r}</option>)}
+                            </select>
                         </div>
                         
                         <div className="flex items-center pb-1 space-x-2">

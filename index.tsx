@@ -1,9 +1,7 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css';
 import App from './App';
-import ErrorBoundary from './components/ErrorBoundary';
 
 // Critical: Expose React and ReactDOM to window for UMD libraries (like Recharts) to work
 (window as any).React = React;
@@ -17,8 +15,6 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
+    <App />
   </React.StrictMode>
 );
