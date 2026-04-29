@@ -24,6 +24,8 @@ import { TrashIcon } from './components/icons/TrashIcon';
 import { PencilIcon } from './components/icons/PencilIcon';
 import { supabase } from './supabaseClient'; 
 
+import * as XLSX from 'xlsx';
+
 const App: React.FC = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>(() => {
         if (typeof window !== 'undefined' && window.localStorage) {
@@ -69,8 +71,12 @@ const App: React.FC = () => {
     });
 
     const [statusLabels, setStatusLabels] = useState<Record<string, string>>(() => {
-        const stored = localStorage.getItem('statusLabels');
-        if (stored) return JSON.parse(stored);
+        try {
+            const stored = localStorage.getItem('statusLabels');
+            if (stored) return JSON.parse(stored);
+        } catch (e) {
+            console.error("Erro ao carregar statusLabels do localStorage:", e);
+        }
         return {
             [ActivityStatus.Open]: 'Aberto',
             [ActivityStatus.NaoExecutado]: 'Não Executado',
@@ -133,16 +139,26 @@ const App: React.FC = () => {
                 }
                 
                 // Fallback to LocalStorage
-                const storedUsers = localStorage.getItem('db_users_secure');
-                if (storedUsers) setUsers(JSON.parse(storedUsers));
+                const loadLocal = (key: string) => {
+                    try {
+                        const stored = localStorage.getItem(key);
+                        return stored ? JSON.parse(stored) : null;
+                    } catch (e) {
+                        console.error(`Erro ao ler ${key} do localStorage:`, e);
+                        return null;
+                    }
+                };
+
+                const storedUsers = loadLocal('db_users_secure');
+                if (storedUsers) setUsers(storedUsers);
                 else setUsers(mockUsers); // Default mocks
 
-                const storedActivities = localStorage.getItem('db_activities');
-                if (storedActivities) setActivities(JSON.parse(storedActivities));
+                const storedActivities = loadLocal('db_activities');
+                if (storedActivities) setActivities(storedActivities);
                 else setActivities(mockActivities);
 
-                const storedBatches = localStorage.getItem('db_import_batches');
-                if (storedBatches) setImportBatches(JSON.parse(storedBatches));
+                const storedBatches = loadLocal('db_import_batches');
+                if (storedBatches) setImportBatches(storedBatches || []);
             }
         };
 
@@ -562,7 +578,6 @@ const App: React.FC = () => {
         reader.onload = (e) => {
             try {
                 const data = e.target?.result;
-                const XLSX = (window as any).XLSX;
                 const workbook = XLSX.read(data, { type: 'array', cellDates: true }); // Important: cellDates
                 const jsonData: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
                 if (jsonData.length === 0) return alert("Planilha vazia ou formato inválido.");
@@ -875,6 +890,12 @@ const App: React.FC = () => {
         return { light: adminUser?.logoLight, dark: adminUser?.logoDark };
     }, [users]);
 
+    const handlePrint = useCallback(() => {
+        console.log('Printing initiated from App...');
+        window.focus();
+        window.print();
+    }, []);
+
     const renderView = () => {
         switch (currentView) {
             case 'dashboard': return <DashboardView activities={filteredAndSortedActivities} customStatusLabels={statusLabels} />;
@@ -923,6 +944,7 @@ const App: React.FC = () => {
                 onOpenSettings={() => setIsSettingsModalOpen(true)}
                 isOnline={isSupabaseConnected}
                 systemLogos={systemLogos}
+                onPrint={handlePrint}
             />
 
             <main className="p-2 flex-1 overflow-y-auto relative z-10">
