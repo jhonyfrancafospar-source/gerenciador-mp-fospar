@@ -22,15 +22,14 @@ import { PhotoIcon } from './components/icons/PhotoIcon';
 import { UserIcon } from './components/icons/UserIcon';
 import { TrashIcon } from './components/icons/TrashIcon';
 import { PencilIcon } from './components/icons/PencilIcon';
+import { safeStorage } from './utils/storage';
 import { supabase } from './supabaseClient'; 
 
 const App: React.FC = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-        if (typeof window !== 'undefined' && window.localStorage) {
-            const storedTheme = window.localStorage.getItem('theme');
-            if (storedTheme === 'dark' || storedTheme === 'light') {
-                return storedTheme;
-            }
+        const storedTheme = safeStorage.getItem('theme');
+        if (storedTheme === 'dark' || storedTheme === 'light') {
+            return storedTheme;
         }
         return 'light';
     });
@@ -69,8 +68,14 @@ const App: React.FC = () => {
     });
 
     const [statusLabels, setStatusLabels] = useState<Record<string, string>>(() => {
-        const stored = localStorage.getItem('statusLabels');
-        if (stored) return JSON.parse(stored);
+        const stored = safeStorage.getItem('statusLabels');
+        if (stored) {
+            try {
+                return JSON.parse(stored);
+            } catch (e) {
+                console.error("Error parsing statusLabels from storage:", e);
+            }
+        }
         return {
             [ActivityStatus.Open]: 'Aberto',
             [ActivityStatus.NaoExecutado]: 'Não Executado',
@@ -133,16 +138,36 @@ const App: React.FC = () => {
                 }
                 
                 // Fallback to LocalStorage
-                const storedUsers = localStorage.getItem('db_users_secure');
-                if (storedUsers) setUsers(JSON.parse(storedUsers));
-                else setUsers(mockUsers); // Default mocks
+                const storedUsers = safeStorage.getItem('db_users_secure');
+                if (storedUsers) {
+                    try {
+                        setUsers(JSON.parse(storedUsers));
+                    } catch (e) {
+                        setUsers(mockUsers);
+                    }
+                } else {
+                    setUsers(mockUsers); // Default mocks
+                }
 
-                const storedActivities = localStorage.getItem('db_activities');
-                if (storedActivities) setActivities(JSON.parse(storedActivities));
-                else setActivities(mockActivities);
+                const storedActivities = safeStorage.getItem('db_activities');
+                if (storedActivities) {
+                    try {
+                        setActivities(JSON.parse(storedActivities));
+                    } catch (e) {
+                        setActivities(mockActivities);
+                    }
+                } else {
+                    setActivities(mockActivities);
+                }
 
-                const storedBatches = localStorage.getItem('db_import_batches');
-                if (storedBatches) setImportBatches(JSON.parse(storedBatches));
+                const storedBatches = safeStorage.getItem('db_import_batches');
+                if (storedBatches) {
+                    try {
+                        setImportBatches(JSON.parse(storedBatches));
+                    } catch (e) {
+                        setImportBatches([]);
+                    }
+                }
             }
         };
 
@@ -154,19 +179,19 @@ const App: React.FC = () => {
     // Save to LocalStorage whenever state changes (Offline Backup)
     useEffect(() => {
         if (!isSupabaseConnected) {
-            localStorage.setItem('db_users_secure', JSON.stringify(users));
+            safeStorage.setItem('db_users_secure', JSON.stringify(users));
         }
     }, [users, isSupabaseConnected]);
 
     useEffect(() => {
         if (!isSupabaseConnected) {
-            localStorage.setItem('db_activities', JSON.stringify(activities));
+            safeStorage.setItem('db_activities', JSON.stringify(activities));
         }
     }, [activities, isSupabaseConnected]);
 
     useEffect(() => {
         if (!isSupabaseConnected) {
-            localStorage.setItem('db_import_batches', JSON.stringify(importBatches));
+            safeStorage.setItem('db_import_batches', JSON.stringify(importBatches));
         }
     }, [importBatches, isSupabaseConnected]);
 
@@ -258,11 +283,11 @@ const App: React.FC = () => {
         const root = window.document.documentElement;
         root.classList.remove(theme === 'light' ? 'dark' : 'light');
         root.classList.add(theme);
-        localStorage.setItem('theme', theme);
+        safeStorage.setItem('theme', theme);
     }, [theme]);
 
     useEffect(() => {
-        localStorage.setItem('statusLabels', JSON.stringify(statusLabels));
+        safeStorage.setItem('statusLabels', JSON.stringify(statusLabels));
     }, [statusLabels]);
 
     const toggleTheme = () => {
