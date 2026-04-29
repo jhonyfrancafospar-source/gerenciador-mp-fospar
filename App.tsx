@@ -918,7 +918,39 @@ const App: React.FC = () => {
     const uniqueTurnos = useMemo(() => ['all', ...Array.from(new Set(activities.map(a => a.turno).filter(Boolean)))], [activities]);
     const uniqueResponsaveis = useMemo(() => ['all', ...Array.from(new Set(activities.map(a => a.responsavel)))], [activities]);
     const uniqueSupervisores = useMemo(() => ['all', ...Array.from(new Set(activities.map(a => a.supervisor || '').filter(Boolean)))], [activities]);
-    const uniqueIdMps = useMemo(() => Array.from(new Set(activities.map(a => a.idMp).filter(Boolean) as string[])), [activities]);
+    const uniqueIdMps = useMemo(() => {
+        const ids = Array.from(new Set(activities.map(a => a.idMp).filter(Boolean) as string[]));
+        
+        // Map of ID MP -> latest timestamp derived from activity ID
+        const idTimestampMap: Record<string, number> = {};
+        
+        activities.forEach(act => {
+            if (!act.idMp) return;
+            
+            let timestamp = 0;
+            const parts = act.id.split('_');
+            if (act.id.startsWith('imported_')) {
+                timestamp = parseInt(parts[1]) || 0;
+            } else if (act.id.startsWith('act_gen_')) {
+                timestamp = parseInt(parts[2]) || 0;
+            } else if (act.id.startsWith('act_')) {
+                timestamp = parseInt(parts[1]) || 0;
+            }
+            
+            if (!idTimestampMap[act.idMp] || timestamp > idTimestampMap[act.idMp]) {
+                idTimestampMap[act.idMp] = timestamp;
+            }
+        });
+
+        return ids.sort((a, b) => {
+            const timeA = idTimestampMap[a] || 0;
+            const timeB = idTimestampMap[b] || 0;
+            
+            if (timeB !== timeA) return timeB - timeA;
+            // Fallback to numeric-base string sort
+            return b.localeCompare(a, undefined, { numeric: true, sensitivity: 'base' });
+        });
+    }, [activities]);
 
     if (!user) {
         return <LoginView onLogin={handleLogin} onRegister={handleRegister} onRecoverPassword={handleRecoverPassword} onRecoverUsername={handleRecoverUsername} error={loginError} />;
