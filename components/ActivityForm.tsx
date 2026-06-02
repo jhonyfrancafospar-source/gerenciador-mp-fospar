@@ -13,7 +13,26 @@ interface ActivityFormProps {
     onUpload?: (file: File) => Promise<string | null>;
 }
 
-const initialFormState: Omit<Activity, 'id'> = {
+const toLocalDateTimeLocal = (dateInput: string | Date | undefined | null): string => {
+    if (!dateInput) return '';
+    try {
+        const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+        if (isNaN(date.getTime())) return '';
+        
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    } catch (e) {
+        console.error("Error formatting local date string:", e);
+        return '';
+    }
+};
+
+const initialFormState = (): Omit<Activity, 'id'> => ({
     idMp: '',
     tag: '',
     tipo: 'PLANO',
@@ -26,8 +45,8 @@ const initialFormState: Omit<Activity, 'id'> = {
     efetivo: '',
     responsavel: '',
     supervisor: '',
-    horaInicio: new Date().toISOString().slice(0, 16), // Local datetime-local format
-    horaFim: new Date(Date.now() + 3600000).toISOString().slice(0, 16),
+    horaInicio: toLocalDateTimeLocal(new Date()), // Local datetime-local format
+    horaFim: toLocalDateTimeLocal(new Date(Date.now() + 3600000)),
     horaInicioReal: '',
     horaFimReal: '',
     duracao: '01:00',
@@ -39,10 +58,10 @@ const initialFormState: Omit<Activity, 'id'> = {
     beforeImage: [],
     afterImage: [],
     observacoes: ''
-};
+});
 
 export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, onClose, customStatusLabels = {}, onUpload }) => {
-    const [formData, setFormData] = useState<Omit<Activity, 'id'>>(initialFormState);
+    const [formData, setFormData] = useState<Omit<Activity, 'id'>>(initialFormState());
     const [recurrenceLimit, setRecurrenceLimit] = useState<string>('');
     const [uploading, setUploading] = useState(false);
 
@@ -51,16 +70,16 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
             setFormData({
                 ...activity,
                 idMp: activity.idMp || '',
-                horaInicio: activity.horaInicio ? new Date(activity.horaInicio).toISOString().slice(0, 16) : '',
-                horaFim: activity.horaFim ? new Date(activity.horaFim).toISOString().slice(0, 16) : '',
-                horaInicioReal: activity.horaInicioReal ? new Date(activity.horaInicioReal).toISOString().slice(0, 16) : '',
-                horaFimReal: activity.horaFimReal ? new Date(activity.horaFimReal).toISOString().slice(0, 16) : '',
+                horaInicio: activity.horaInicio ? toLocalDateTimeLocal(activity.horaInicio) : '',
+                horaFim: activity.horaFim ? toLocalDateTimeLocal(activity.horaFim) : '',
+                horaInicioReal: activity.horaInicioReal ? toLocalDateTimeLocal(activity.horaInicioReal) : '',
+                horaFimReal: activity.horaFimReal ? toLocalDateTimeLocal(activity.horaFimReal) : '',
                 turno: activity.turno || '',
                 beforeImage: Array.isArray(activity.beforeImage) ? activity.beforeImage : (activity.beforeImage ? [activity.beforeImage] : []),
                 afterImage: Array.isArray(activity.afterImage) ? activity.afterImage : (activity.afterImage ? [activity.afterImage] : []),
             });
         } else {
-            setFormData(initialFormState);
+            setFormData(initialFormState());
         }
     }, [activity]);
 
