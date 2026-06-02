@@ -135,7 +135,7 @@ export const Header: React.FC<HeaderProps> = ({
                         {/* Mobile Actions Group */}
                         <div className="flex items-center gap-2 xl:hidden">
                             <div className="flex flex-col gap-1.5">
-                                {user?.role !== 'operator' && (
+                                {user?.role === 'admin' && (
                                     <button
                                         type="button"
                                         onClick={handleImportClick}
@@ -194,7 +194,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {/* Desktop Actions */}
                     <div className="hidden xl:flex items-center space-x-3 justify-end w-full xl:w-auto">
                         <div className="flex flex-col gap-1.5">
-                            {user?.role !== 'operator' && (
+                            {user?.role === 'admin' && (
                                 <button
                                     type="button"
                                     onClick={handleImportClick}

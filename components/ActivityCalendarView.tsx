@@ -46,7 +46,7 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
     });
 
     const handleDragStart = (e: React.DragEvent, id: string) => {
-        if (userRole === 'operator') {
+        if (userRole === 'operator' || userRole === 'user') {
             e.preventDefault();
             return;
         }
@@ -55,13 +55,13 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
     };
 
     const handleDragOver = (e: React.DragEvent) => {
-        if (userRole === 'operator') return;
+        if (userRole === 'operator' || userRole === 'user') return;
         e.preventDefault(); // Necessary to allow dropping
     };
 
     const handleDrop = (e: React.DragEvent, day: number) => {
         e.preventDefault();
-        if (userRole === 'operator') return;
+        if (userRole === 'operator' || userRole === 'user') return;
         const id = e.dataTransfer.getData("text/plain");
         if (id) {
             const targetDate = new Date(year, month, day);
@@ -105,7 +105,7 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
                     {dayActivities.map(act => (
                         <div 
                             key={act.id}
-                            draggable={userRole !== 'operator'}
+                            draggable={userRole !== 'operator' && userRole !== 'user'}
                             onDragStart={(e) => handleDragStart(e, act.id)}
                             onClick={(e) => { e.stopPropagation(); onEdit(act); }}
                             className={`text-[10px] px-1.5 py-1 rounded cursor-grab active:cursor-grabbing truncate border-l-2 shadow-sm hover:opacity-80 ${getStatusClasses(act.status, false).replace('text-xs', '').replace('font-bold', 'font-medium').replace('uppercase', '')}`}

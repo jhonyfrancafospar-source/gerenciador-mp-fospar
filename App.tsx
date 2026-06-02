@@ -1112,7 +1112,7 @@ const App: React.FC = () => {
                     )}
 
                     {/* Manage Import Batches */}
-                    {user.role !== 'operator' && (
+                    {user.role === 'admin' && (
                         <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
                             <h3 className="font-semibold mb-2">Gerenciar Importações</h3>
                             <div className="space-y-2 max-h-40 overflow-y-auto">

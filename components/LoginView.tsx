@@ -20,7 +20,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
     // Registration & Recovery fields
     const [name, setName] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [role, setRole] = useState<'user' | 'operator'>('user');
+    const [role, setRole] = useState<'admin' | 'user' | 'operator'>('user');
     
     // Feedback
     const [localError, setLocalError] = useState<string | null>(null);
@@ -150,7 +150,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
                                         onChange={e => setRole(e.target.value as any)}
                                         className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white bg-white dark:bg-gray-700"
                                     >
-                                        <option value="user">Usuário Comum (Acesso Total)</option>
+                                        <option value="admin">Administrador (Acesso Total)</option>
+                                        <option value="user">Usuário Comum (Sem Importação e Alteração de Datas/Horas)</option>
                                         <option value="operator">Operador / Executante (Apenas Visualização, Status e Obs)</option>
                                     </select>
                                 </div>

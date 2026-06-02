@@ -66,6 +66,8 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
     const [recurrenceLimit, setRecurrenceLimit] = useState<string>('');
     const [uploading, setUploading] = useState(false);
     const isOperator = userRole === 'operator';
+    const isNormalUser = userRole === 'user';
+    const disableDates = isOperator || isNormalUser;
 
     useEffect(() => {
         if (activity) {
@@ -251,15 +253,15 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                 <h4 className="md:col-span-3 text-xs font-bold text-gray-500 uppercase">Planejamento</h4>
                 <div>
                     <label className="block text-sm font-medium">Início Planejado</label>
-                    <input type="datetime-local" name="horaInicio" value={formData.horaInicio} onChange={handleChange} className={inputClasses} required disabled={isOperator} />
+                    <input type="datetime-local" name="horaInicio" value={formData.horaInicio} onChange={handleChange} className={inputClasses} required disabled={disableDates} />
                 </div>
                 <div>
                     <label className="block text-sm font-medium">Fim Planejado</label>
-                    <input type="datetime-local" name="horaFim" value={formData.horaFim} onChange={handleChange} className={inputClasses} required disabled={isOperator} />
+                    <input type="datetime-local" name="horaFim" value={formData.horaFim} onChange={handleChange} className={inputClasses} required disabled={disableDates} />
                 </div>
                 <div>
                     <label className="block text-sm font-medium">Duração (Estimada)</label>
-                    <input type="text" name="duracao" value={formData.duracao} onChange={handleChange} className={inputClasses} placeholder="00:00" disabled={isOperator} />
+                    <input type="text" name="duracao" value={formData.duracao} onChange={handleChange} className={inputClasses} placeholder="00:00" disabled={disableDates} />
                 </div>
             </div>
 
@@ -268,11 +270,11 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                 <h4 className="md:col-span-2 text-xs font-bold text-blue-600 dark:text-blue-400 uppercase">Execução Real</h4>
                 <div>
                     <label className="block text-sm font-medium">Início Real</label>
-                    <input type="datetime-local" name="horaInicioReal" value={formData.horaInicioReal || ''} onChange={handleChange} className={inputClasses} disabled={isOperator} />
+                    <input type="datetime-local" name="horaInicioReal" value={formData.horaInicioReal || ''} onChange={handleChange} className={inputClasses} disabled={disableDates} />
                 </div>
                 <div>
                     <label className="block text-sm font-medium">Fim Real</label>
-                    <input type="datetime-local" name="horaFimReal" value={formData.horaFimReal || ''} onChange={handleChange} className={inputClasses} disabled={isOperator} />
+                    <input type="datetime-local" name="horaFimReal" value={formData.horaFimReal || ''} onChange={handleChange} className={inputClasses} disabled={disableDates} />
                 </div>
             </div>
 
@@ -288,7 +290,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                 </div>
                 <div>
                     <label className="block text-sm font-medium">Recorrência</label>
-                    <select name="periodicidade" value={formData.periodicidade} onChange={handleChange} className={inputClasses} disabled={isOperator}>
+                    <select name="periodicidade" value={formData.periodicidade} onChange={handleChange} className={inputClasses} disabled={disableDates}>
                         {Object.values(Recorrencia).map(r => (
                             <option key={r} value={r}>{r}</option>
                         ))}
@@ -306,6 +308,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                         onChange={(e) => setRecurrenceLimit(e.target.value)} 
                         className={inputClasses}
                         min={new Date().toISOString().split('T')[0]}
+                        disabled={disableDates}
                     />
                     <p className="text-xs text-gray-500 mt-1">Serão criadas cópias desta atividade até a data selecionada.</p>
                 </div>
