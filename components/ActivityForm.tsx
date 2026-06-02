@@ -11,6 +11,7 @@ interface ActivityFormProps {
     onClose: () => void;
     customStatusLabels?: Record<string, string>;
     onUpload?: (file: File) => Promise<string | null>;
+    userRole?: string;
 }
 
 const toLocalDateTimeLocal = (dateInput: string | Date | undefined | null): string => {
@@ -60,10 +61,11 @@ const initialFormState = (): Omit<Activity, 'id'> => ({
     observacoes: ''
 });
 
-export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, onClose, customStatusLabels = {}, onUpload }) => {
+export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, onClose, customStatusLabels = {}, onUpload, userRole }) => {
     const [formData, setFormData] = useState<Omit<Activity, 'id'>>(initialFormState());
     const [recurrenceLimit, setRecurrenceLimit] = useState<string>('');
     const [uploading, setUploading] = useState(false);
+    const isOperator = userRole === 'operator';
 
     useEffect(() => {
         if (activity) {
@@ -174,7 +176,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
         onClose();
     };
 
-    const inputClasses = "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm p-2 border";
+    const inputClasses = "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white sm:text-sm p-2 border disabled:opacity-70 disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed";
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4 text-gray-900 dark:text-white">
@@ -189,36 +191,37 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                         onChange={handleChange} 
                         className={inputClasses} 
                         placeholder="Ex: MP GR 01-08"
+                        disabled={isOperator}
                     />
                 </div>
                 <div className="md:col-span-3">
                     <label className="block text-sm font-medium">TAG</label>
-                    <input type="text" name="tag" value={formData.tag} onChange={handleChange} className={inputClasses} required />
+                    <input type="text" name="tag" value={formData.tag} onChange={handleChange} className={inputClasses} required disabled={isOperator} />
                 </div>
             </div>
 
             {/* Description */}
             <div>
                 <label className="block text-sm font-medium">Descrição</label>
-                <textarea name="descricao" value={formData.descricao} onChange={handleChange} className={inputClasses} rows={2} required />
+                <textarea name="descricao" value={formData.descricao} onChange={handleChange} className={inputClasses} rows={2} required disabled={isOperator} />
             </div>
 
             {/* People & Location */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium">Responsável (Executante)</label>
-                    <input type="text" name="responsavel" value={formData.responsavel} onChange={handleChange} className={inputClasses} />
+                    <input type="text" name="responsavel" value={formData.responsavel} onChange={handleChange} className={inputClasses} disabled={isOperator} />
                 </div>
                 <div>
                     <label className="block text-sm font-medium">Supervisor</label>
-                    <input type="text" name="supervisor" value={formData.supervisor || ''} onChange={handleChange} className={inputClasses} />
+                    <input type="text" name="supervisor" value={formData.supervisor || ''} onChange={handleChange} className={inputClasses} disabled={isOperator} />
                 </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <label className="block text-sm font-medium">Área</label>
-                    <input type="text" name="area" value={formData.area} onChange={handleChange} className={inputClasses} />
+                    <input type="text" name="area" value={formData.area} onChange={handleChange} className={inputClasses} disabled={isOperator} />
                 </div>
                 {/* Turno Editing Field */}
                 <div>
@@ -230,11 +233,12 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                         onChange={handleChange} 
                         className={inputClasses} 
                         placeholder="A, B, C, D, ADM"
+                        disabled={isOperator}
                     />
                 </div>
                 <div>
                     <label className="block text-sm font-medium">Criticidade</label>
-                    <select name="criticidade" value={formData.criticidade} onChange={handleChange} className={inputClasses}>
+                    <select name="criticidade" value={formData.criticidade} onChange={handleChange} className={inputClasses} disabled={isOperator}>
                         {Object.values(Criticidade).map(c => (
                             <option key={c} value={c}>{c.toUpperCase()}</option>
                         ))}
@@ -247,15 +251,15 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                 <h4 className="md:col-span-3 text-xs font-bold text-gray-500 uppercase">Planejamento</h4>
                 <div>
                     <label className="block text-sm font-medium">Início Planejado</label>
-                    <input type="datetime-local" name="horaInicio" value={formData.horaInicio} onChange={handleChange} className={inputClasses} required />
+                    <input type="datetime-local" name="horaInicio" value={formData.horaInicio} onChange={handleChange} className={inputClasses} required disabled={isOperator} />
                 </div>
                 <div>
                     <label className="block text-sm font-medium">Fim Planejado</label>
-                    <input type="datetime-local" name="horaFim" value={formData.horaFim} onChange={handleChange} className={inputClasses} required />
+                    <input type="datetime-local" name="horaFim" value={formData.horaFim} onChange={handleChange} className={inputClasses} required disabled={isOperator} />
                 </div>
                 <div>
                     <label className="block text-sm font-medium">Duração (Estimada)</label>
-                    <input type="text" name="duracao" value={formData.duracao} onChange={handleChange} className={inputClasses} placeholder="00:00" />
+                    <input type="text" name="duracao" value={formData.duracao} onChange={handleChange} className={inputClasses} placeholder="00:00" disabled={isOperator} />
                 </div>
             </div>
 
@@ -264,11 +268,11 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                 <h4 className="md:col-span-2 text-xs font-bold text-blue-600 dark:text-blue-400 uppercase">Execução Real</h4>
                 <div>
                     <label className="block text-sm font-medium">Início Real</label>
-                    <input type="datetime-local" name="horaInicioReal" value={formData.horaInicioReal || ''} onChange={handleChange} className={inputClasses} />
+                    <input type="datetime-local" name="horaInicioReal" value={formData.horaInicioReal || ''} onChange={handleChange} className={inputClasses} disabled={isOperator} />
                 </div>
                 <div>
                     <label className="block text-sm font-medium">Fim Real</label>
-                    <input type="datetime-local" name="horaFimReal" value={formData.horaFimReal || ''} onChange={handleChange} className={inputClasses} />
+                    <input type="datetime-local" name="horaFimReal" value={formData.horaFimReal || ''} onChange={handleChange} className={inputClasses} disabled={isOperator} />
                 </div>
             </div>
 
@@ -284,7 +288,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                 </div>
                 <div>
                     <label className="block text-sm font-medium">Recorrência</label>
-                    <select name="periodicidade" value={formData.periodicidade} onChange={handleChange} className={inputClasses}>
+                    <select name="periodicidade" value={formData.periodicidade} onChange={handleChange} className={inputClasses} disabled={isOperator}>
                         {Object.values(Recorrencia).map(r => (
                             <option key={r} value={r}>{r}</option>
                         ))}
@@ -320,19 +324,23 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                     {getSafeImages(formData.beforeImage).map((img) => (
                         <div key={img.id} className="relative group aspect-square bg-gray-100 dark:bg-gray-800 rounded overflow-hidden">
                             <img src={img.url} alt="Antes" className="w-full h-full object-cover" />
-                            <button
-                                type="button"
-                                onClick={() => handleRemoveImage('beforeImage', img.id)}
-                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                                <TrashIcon className="w-3 h-3" />
-                            </button>
+                            {!isOperator && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveImage('beforeImage', img.id)}
+                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    <TrashIcon className="w-3 h-3" />
+                                </button>
+                            )}
                         </div>
                     ))}
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 h-24">
-                        <span className="text-xs text-gray-500">{uploading ? '...' : '+ Adicionar'}</span>
-                        <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'beforeImage')} disabled={uploading} />
-                    </label>
+                    {!isOperator && (
+                        <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 h-24">
+                            <span className="text-xs text-gray-500">{uploading ? '...' : '+ Adicionar'}</span>
+                            <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'beforeImage')} disabled={uploading} />
+                        </label>
+                    )}
                 </div>
             </div>
 
@@ -343,19 +351,23 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                     {getSafeImages(formData.afterImage).map((img) => (
                         <div key={img.id} className="relative group aspect-square bg-gray-100 dark:bg-gray-800 rounded overflow-hidden">
                             <img src={img.url} alt="Depois" className="w-full h-full object-cover" />
-                            <button
-                                type="button"
-                                onClick={() => handleRemoveImage('afterImage', img.id)}
-                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                                <TrashIcon className="w-3 h-3" />
-                            </button>
+                            {!isOperator && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveImage('afterImage', img.id)}
+                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    <TrashIcon className="w-3 h-3" />
+                                </button>
+                            )}
                         </div>
                     ))}
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 h-24">
-                        <span className="text-xs text-gray-500">{uploading ? '...' : '+ Adicionar'}</span>
-                        <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'afterImage')} disabled={uploading} />
-                    </label>
+                    {!isOperator && (
+                        <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 h-24">
+                            <span className="text-xs text-gray-500">{uploading ? '...' : '+ Adicionar'}</span>
+                            <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'afterImage')} disabled={uploading} />
+                        </label>
+                    )}
                 </div>
             </div>
 

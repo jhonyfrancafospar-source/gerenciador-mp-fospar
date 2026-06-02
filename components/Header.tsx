@@ -135,14 +135,16 @@ export const Header: React.FC<HeaderProps> = ({
                         {/* Mobile Actions Group */}
                         <div className="flex items-center gap-2 xl:hidden">
                             <div className="flex flex-col gap-1.5">
-                                <button
-                                    type="button"
-                                    onClick={handleImportClick}
-                                    className="p-2 rounded-md bg-green-600 hover:bg-green-700 text-white shadow-sm transition-colors flex items-center justify-center"
-                                    title="Importar"
-                                >
-                                   <DocumentArrowDownIcon className="w-5 h-5" />
-                                </button>
+                                {user?.role !== 'operator' && (
+                                    <button
+                                        type="button"
+                                        onClick={handleImportClick}
+                                        className="p-2 rounded-md bg-green-600 hover:bg-green-700 text-white shadow-sm transition-colors flex items-center justify-center"
+                                        title="Importar"
+                                    >
+                                       <DocumentArrowDownIcon className="w-5 h-5" />
+                                    </button>
+                                )}
                                 
                                 <button
                                     type="button"
@@ -192,15 +194,17 @@ export const Header: React.FC<HeaderProps> = ({
                     {/* Desktop Actions */}
                     <div className="hidden xl:flex items-center space-x-3 justify-end w-full xl:w-auto">
                         <div className="flex flex-col gap-1.5">
-                            <button
-                                type="button"
-                                onClick={handleImportClick}
-                                className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-green-600 hover:bg-green-700 text-white transition-colors shadow-sm"
-                                title="Importar Excel"
-                            >
-                               <DocumentArrowDownIcon className="w-4 h-4" />
-                               <span>Importar</span>
-                            </button>
+                            {user?.role !== 'operator' && (
+                                <button
+                                    type="button"
+                                    onClick={handleImportClick}
+                                    className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-green-600 hover:bg-green-700 text-white transition-colors shadow-sm"
+                                    title="Importar Excel"
+                                >
+                                   <DocumentArrowDownIcon className="w-4 h-4" />
+                                   <span>Importar</span>
+                                 </button>
+                             )}
                             
                             <button
                                 type="button"

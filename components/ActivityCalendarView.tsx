@@ -8,9 +8,10 @@ interface ActivityCalendarViewProps {
     onEdit: (activity: Activity) => void;
     customStatusLabels?: Record<string, string>;
     onDateChange: (activityId: string, newDate: Date) => void;
+    userRole?: string;
 }
 
-export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ activities, onEdit, customStatusLabels = {}, onDateChange }) => {
+export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ activities, onEdit, customStatusLabels = {}, onDateChange, userRole }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
 
     const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -45,16 +46,22 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
     });
 
     const handleDragStart = (e: React.DragEvent, id: string) => {
+        if (userRole === 'operator') {
+            e.preventDefault();
+            return;
+        }
         e.dataTransfer.setData("text/plain", id);
         e.dataTransfer.effectAllowed = "move";
     };
 
     const handleDragOver = (e: React.DragEvent) => {
+        if (userRole === 'operator') return;
         e.preventDefault(); // Necessary to allow dropping
     };
 
     const handleDrop = (e: React.DragEvent, day: number) => {
         e.preventDefault();
+        if (userRole === 'operator') return;
         const id = e.dataTransfer.getData("text/plain");
         if (id) {
             const targetDate = new Date(year, month, day);
@@ -98,7 +105,7 @@ export const ActivityCalendarView: React.FC<ActivityCalendarViewProps> = ({ acti
                     {dayActivities.map(act => (
                         <div 
                             key={act.id}
-                            draggable
+                            draggable={userRole !== 'operator'}
                             onDragStart={(e) => handleDragStart(e, act.id)}
                             onClick={(e) => { e.stopPropagation(); onEdit(act); }}
                             className={`text-[10px] px-1.5 py-1 rounded cursor-grab active:cursor-grabbing truncate border-l-2 shadow-sm hover:opacity-80 ${getStatusClasses(act.status, false).replace('text-xs', '').replace('font-bold', 'font-medium').replace('uppercase', '')}`}

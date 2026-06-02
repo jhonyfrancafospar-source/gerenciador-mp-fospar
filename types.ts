@@ -66,7 +66,7 @@ export interface User {
     username: string; 
     password?: string;
     name: string; 
-    role: 'admin' | 'user';
+    role: 'admin' | 'user' | 'operator';
     profilePicture?: string;
     backgroundImage?: string;
     // System preferences (usually stored on admin user)

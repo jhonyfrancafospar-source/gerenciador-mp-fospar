@@ -20,6 +20,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
     // Registration & Recovery fields
     const [name, setName] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [role, setRole] = useState<'user' | 'operator'>('user');
     
     // Feedback
     const [localError, setLocalError] = useState<string | null>(null);
@@ -30,6 +31,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
         setPassword('');
         setName('');
         setConfirmPassword('');
+        setRole('user');
         setLocalError(null);
         setSuccessMessage(null);
     };
@@ -58,7 +60,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
                 username,
                 password,
                 name,
-                role: 'user'
+                role
             };
             onRegister(newUser);
         } else if (viewMode === 'recover') {
@@ -136,10 +138,23 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
                         )}
 
                         {viewMode === 'register' && (
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirmar Senha</label>
-                                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
-                            </div>
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirmar Senha</label>
+                                    <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                </div>
+                                <div className="mt-4">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Função / Tipo de Acesso</label>
+                                    <select
+                                        value={role}
+                                        onChange={e => setRole(e.target.value as any)}
+                                        className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white bg-white dark:bg-gray-700"
+                                    >
+                                        <option value="user">Usuário Comum (Acesso Total)</option>
+                                        <option value="operator">Operador / Executante (Apenas Visualização, Status e Obs)</option>
+                                    </select>
+                                </div>
+                            </>
                         )}
 
                         <button type="submit" className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2 px-4 rounded transition-colors">

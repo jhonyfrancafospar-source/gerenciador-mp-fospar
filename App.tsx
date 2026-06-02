@@ -901,11 +901,12 @@ const App: React.FC = () => {
     }, [users]);
 
     const renderView = () => {
+        const isOperator = user?.role === 'operator';
         switch (currentView) {
             case 'dashboard': return <DashboardView activities={filteredAndSortedActivities} customStatusLabels={statusLabels} />;
-            case 'list': return <ActivityListView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={handleDeleteActivity} customStatusLabels={statusLabels} />;
-            case 'board': return <ActivityBoardView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={handleDeleteActivity} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
-            case 'calendar': return <ActivityCalendarView activities={filteredAndSortedActivities} onEdit={openEditModal} customStatusLabels={statusLabels} onDateChange={handleActivityDateChange} />;
+            case 'list': return <ActivityListView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} customStatusLabels={statusLabels} />;
+            case 'board': return <ActivityBoardView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
+            case 'calendar': return <ActivityCalendarView activities={filteredAndSortedActivities} onEdit={openEditModal} customStatusLabels={statusLabels} onDateChange={handleActivityDateChange} userRole={user?.role} />;
             case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} />;
             case 'report': return <ReportView activities={filteredAndSortedActivities} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'audit': return <AuditLogView logs={auditLogs} />;
@@ -986,9 +987,11 @@ const App: React.FC = () => {
                 {renderView()}
             </main>
             
-            <button onClick={openCreateModal} className="fixed bottom-8 right-8 bg-primary-600 hover:bg-primary-700 text-white rounded-full p-4 shadow-lg z-50">
-                <PlusIcon className="w-8 h-8" />
-            </button>
+            {user?.role !== 'operator' && (
+                <button onClick={openCreateModal} className="fixed bottom-8 right-8 bg-primary-600 hover:bg-primary-700 text-white rounded-full p-4 shadow-lg z-50">
+                    <PlusIcon className="w-8 h-8" />
+                </button>
+            )}
 
             <ImportMappingModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} excelHeaders={excelHeaders} onConfirm={handleImportConfirm} initialMapping={initialMapping} />
 
@@ -1109,40 +1112,42 @@ const App: React.FC = () => {
                     )}
 
                     {/* Manage Import Batches */}
-                    <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
-                        <h3 className="font-semibold mb-2">Gerenciar Importações</h3>
-                        <div className="space-y-2 max-h-40 overflow-y-auto">
-                            {importBatches.length === 0 ? (
-                                <p className="text-sm text-gray-500 italic">Nenhum lote importado.</p>
-                            ) : (
-                                importBatches.map(batch => (
-                                    <div key={batch.id} className="flex justify-between items-center bg-gray-50 dark:bg-gray-700 p-2 rounded text-sm">
-                                        <div>
-                                            <span className="font-medium block">{new Date(parseInt(batch.id)).toLocaleString()}</span>
-                                            <span className="text-xs text-gray-500 dark:text-gray-400">{batch.count} atividades</span>
-                                            {batch.fileUrl && <a href={batch.fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline ml-2">Baixar Arquivo</a>}
+                    {user.role !== 'operator' && (
+                        <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
+                            <h3 className="font-semibold mb-2">Gerenciar Importações</h3>
+                            <div className="space-y-2 max-h-40 overflow-y-auto">
+                                {importBatches.length === 0 ? (
+                                    <p className="text-sm text-gray-500 italic">Nenhum lote importado.</p>
+                                ) : (
+                                    importBatches.map(batch => (
+                                        <div key={batch.id} className="flex justify-between items-center bg-gray-50 dark:bg-gray-700 p-2 rounded text-sm">
+                                            <div>
+                                                <span className="font-medium block">{new Date(parseInt(batch.id)).toLocaleString()}</span>
+                                                <span className="text-xs text-gray-500 dark:text-gray-400">{batch.count} atividades</span>
+                                                {batch.fileUrl && <a href={batch.fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline ml-2">Baixar Arquivo</a>}
+                                            </div>
+                                            <div className="flex space-x-2">
+                                                <button 
+                                                    onClick={() => handleEditImportBatch(batch.id)} 
+                                                    className="text-blue-600 hover:text-blue-800 p-1"
+                                                    title="Editar Mapeamento"
+                                                >
+                                                    <PencilIcon className="w-4 h-4" />
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDeleteImportBatch(batch.id)} 
+                                                    className="text-red-600 hover:text-red-800 p-1"
+                                                    title="Excluir Lote"
+                                                >
+                                                    <TrashIcon className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="flex space-x-2">
-                                            <button 
-                                                onClick={() => handleEditImportBatch(batch.id)} 
-                                                className="text-blue-600 hover:text-blue-800 p-1"
-                                                title="Editar Mapeamento"
-                                            >
-                                                <PencilIcon className="w-4 h-4" />
-                                            </button>
-                                            <button 
-                                                onClick={() => handleDeleteImportBatch(batch.id)} 
-                                                className="text-red-600 hover:text-red-800 p-1"
-                                                title="Excluir Lote"
-                                            >
-                                                <TrashIcon className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
+                                    ))
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Manage Users (Admin Only) */}
                     {user.role === 'admin' && (
@@ -1171,23 +1176,25 @@ const App: React.FC = () => {
                     )}
 
                     {/* Status Labels Configuration */}
-                    <div>
-                        <h3 className="font-semibold mb-2">Personalizar Status</h3>
-                        <div className="space-y-2">
-                            {Object.values(ActivityStatus).map(status => (
-                                <div key={status} className="flex items-center justify-between">
-                                    <span className="text-sm text-gray-600 dark:text-gray-400 w-1/3">{status}</span>
-                                    <input 
-                                        type="text" 
-                                        value={statusLabels[status] || ''} 
-                                        onChange={(e) => handleStatusLabelChange(status, e.target.value)}
-                                        className="w-2/3 p-1 text-sm border rounded bg-white dark:bg-gray-600 border-gray-300 dark:border-gray-500 dark:text-white"
-                                        placeholder={`Ex: ${status}`}
-                                    />
-                                </div>
-                            ))}
+                    {user.role !== 'operator' && (
+                        <div>
+                            <h3 className="font-semibold mb-2">Personalizar Status</h3>
+                            <div className="space-y-2">
+                                {Object.values(ActivityStatus).map(status => (
+                                    <div key={status} className="flex items-center justify-between">
+                                        <span className="text-sm text-gray-600 dark:text-gray-400 w-1/3">{status}</span>
+                                        <input 
+                                            type="text" 
+                                            value={statusLabels[status] || ''} 
+                                            onChange={(e) => handleStatusLabelChange(status, e.target.value)}
+                                            className="w-2/3 p-1 text-sm border rounded bg-white dark:bg-gray-600 border-gray-300 dark:border-gray-500 dark:text-white"
+                                            placeholder={`Ex: ${status}`}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
                 
                 <div className="flex justify-end pt-4 space-x-3 border-t border-gray-200 dark:border-gray-700 mt-4">
@@ -1206,13 +1213,14 @@ const App: React.FC = () => {
                 </div>
             </Modal>
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingActivity ? "Editar" : "Criar"}>
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingActivity ? (user?.role === 'operator' ? "Visualizar / Atualizar Status" : "Editar") : "Criar"}>
                 <ActivityForm 
                     activity={editingActivity} 
                     onSubmit={editingActivity ? handleUpdateActivity : handleAddActivity} 
                     onClose={() => setIsModalOpen(false)} 
                     customStatusLabels={statusLabels}
                     onUpload={(file) => uploadFileToSupabase(file, `activities/${editingActivity?.tag || 'new'}`)}
+                    userRole={user?.role}
                 />
             </Modal>
 
