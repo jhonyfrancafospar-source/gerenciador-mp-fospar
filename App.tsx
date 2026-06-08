@@ -121,13 +121,21 @@ const App: React.FC = () => {
                 }
 
                 // 2. Activities
-                const { data: activitiesData, error: actError } = await supabase.from('activities').select('*');
-                if (actError) throw actError;
-                if (activitiesData) {
-                    // Flatten JSON data if stored in json_data column, or use direct cols if mapped
-                    const parsedActivities = activitiesData.map((row: any) => row.json_data || row);
-                    setActivities(parsedActivities);
+                const allActivities: any[] = [];
+                let actStart = 0;
+                const actLimit = 200;
+                while (true) {
+                    const { data: chunkData, error: actError } = await supabase
+                        .from('activities')
+                        .select('*')
+                        .range(actStart, actStart + actLimit - 1);
+                    if (actError) throw actError;
+                    if (!chunkData || chunkData.length === 0) break;
+                    allActivities.push(...chunkData);
+                    actStart += actLimit;
                 }
+                const parsedActivities = allActivities.map((row: any) => row.json_data || row);
+                setActivities(parsedActivities);
 
                 // 3. Import Batches
                 const { data: batchesData, error: batchError } = await supabase.from('import_batches').select('*');

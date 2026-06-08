@@ -105,13 +105,73 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
         return [];
     };
 
+    const compressImage = (file: File): Promise<File> => {
+        return new Promise((resolve) => {
+            if (!file.type.startsWith('image/')) {
+                resolve(file);
+                return;
+            }
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                URL.revokeObjectURL(img.src);
+                const maxWidth = 800;
+                const maxHeight = 800;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth || height > maxHeight) {
+                    if (width > height) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    } else {
+                        width = Math.round((width * maxHeight) / height);
+                        height = maxHeight;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    resolve(file);
+                    return;
+                }
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                            type: 'image/jpeg',
+                            lastModified: Date.now()
+                        });
+                        resolve(compressedFile);
+                    } else {
+                        resolve(file);
+                    }
+                }, 'image/jpeg', 0.7);
+            };
+            img.onerror = () => {
+                resolve(file);
+            };
+        });
+    };
+
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: 'beforeImage' | 'afterImage' | 'attachments') => {
         if (e.target.files && e.target.files.length > 0) {
             setUploading(true);
             const files = Array.from(e.target.files) as File[];
             const newAttachments: Attachment[] = [];
 
-            for (const file of files) {
+            for (let file of files) {
+                if (file.type.startsWith('image/')) {
+                    try {
+                        file = await compressImage(file);
+                    } catch (err) {
+                        console.error('Image compression failed:', err);
+                    }
+                }
+
                 let url = '';
                 
                 if (onUpload) {
