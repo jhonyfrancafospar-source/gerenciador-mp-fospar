@@ -106,7 +106,19 @@ const App: React.FC = () => {
                 // 1. Users
                 const { data: usersData, error: usersError } = await supabase.from('app_users').select('*');
                 if (usersError) throw usersError;
-                if (usersData) setUsers(usersData);
+                if (usersData) {
+                    const normalizedUsers = usersData.map((u: any) => ({
+                        username: u.username,
+                        name: u.name,
+                        password: u.password,
+                        role: (u.role || 'user').toLowerCase() as 'admin' | 'user' | 'operator',
+                        profilePicture: u.profile_picture || u.profilePicture,
+                        backgroundImage: u.background_image || u.backgroundImage,
+                        logoLight: u.logo_light || u.logoLight,
+                        logoDark: u.logo_dark || u.logoDark,
+                    }));
+                    setUsers(normalizedUsers);
+                }
 
                 // 2. Activities
                 const { data: activitiesData, error: actError } = await supabase.from('activities').select('*');
@@ -216,7 +228,15 @@ const App: React.FC = () => {
 
     const saveUserToSupabase = async (u: User) => {
         if (!isSupabaseConnected) return;
-        const { error } = await supabase.from('app_users').upsert(u);
+        const dbUser = {
+            username: u.username,
+            name: u.name,
+            password: u.password,
+            role: (u.role || 'user').toLowerCase(),
+            profile_picture: u.profilePicture || null,
+            background_image: u.backgroundImage || null
+        };
+        const { error } = await supabase.from('app_users').upsert(dbUser);
         if (error) {
              if (error.code === '42501') alert("Erro de Permissão (RLS) ao salvar usuário.");
              else if (!error.message.includes("does not exist")) console.error('Error saving user:', error.message);
