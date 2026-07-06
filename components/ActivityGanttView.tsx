@@ -48,7 +48,7 @@ const GanttBar: React.FC<{ activity: Activity, chartStart: number, hourWidth: nu
                 onClick();
             }}
         >
-            {width > 40 && <span className="truncate">{activity.tag}</span>}
+            {width > 40 && <span className="truncate">{activity.descricao}</span>}
         </div>
     );
 };
@@ -300,11 +300,11 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                                     onClick={() => onEdit(activity)}
                                 >
                                     <div className="flex items-center justify-between">
-                                        <p className="font-bold truncate text-xs text-gray-800 dark:text-gray-200 group-hover:text-primary-600 transition-colors">{activity.tag}</p>
+                                        <p className="font-bold truncate text-xs text-gray-800 dark:text-gray-200 group-hover:text-primary-600 transition-colors">{activity.descricao}</p>
                                         <div className={`w-2 h-2 rounded-full ${STATUS_COLORS[activity.status]}`}></div>
                                     </div>
                                     {!isCompact && (
-                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{activity.descricao}</p>
+                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{activity.tag}</p>
                                     )}
                                 </div>
                                 
