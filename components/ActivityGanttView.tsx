@@ -57,10 +57,51 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
     const [currentTime, setCurrentTime] = useState(new Date());
     const [hourWidth, setHourWidth] = useState(60); // Zoom level
     const [isCompact, setIsCompact] = useState(false); // Row height toggle
+    const [yAxisWidth, setYAxisWidth] = useState<number>(() => {
+        const saved = localStorage.getItem('gantt_y_axis_width');
+        if (saved) {
+            const parsed = parseInt(saved, 10);
+            if (!isNaN(parsed) && parsed >= 120 && parsed <= 600) return parsed;
+        }
+        return 240;
+    });
+    const [isResizing, setIsResizing] = useState(false);
+    const startXRef = useRef(0);
+    const startWidthRef = useRef(240);
+
     const containerRef = useRef<HTMLDivElement>(null);
 
     const rowHeight = isCompact ? 28 : 45; 
-    const yAxisWidth = 220; 
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsResizing(true);
+        startXRef.current = e.clientX;
+        startWidthRef.current = yAxisWidth;
+    };
+
+    useEffect(() => {
+        if (!isResizing) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const delta = e.clientX - startXRef.current;
+            const newWidth = Math.max(120, Math.min(600, startWidthRef.current + delta));
+            setYAxisWidth(newWidth);
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+            localStorage.setItem('gantt_y_axis_width', yAxisWidth.toString());
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing, yAxisWidth]);
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -158,7 +199,36 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
     });
 
     return (
-        <div className="flex flex-col h-[80vh] bg-white/70 dark:bg-gray-900/80 backdrop-blur-md rounded-lg shadow border border-gray-200/50 dark:border-gray-700/50">
+        <div className={`flex flex-col h-[80vh] bg-white/70 dark:bg-gray-900/80 backdrop-blur-md rounded-lg shadow border border-gray-200/50 dark:border-gray-700/50 ${isResizing ? 'select-none cursor-col-resize' : ''}`}>
+            <style>{`
+                .custom-gantt-scroll::-webkit-scrollbar {
+                    height: 12px;
+                    width: 12px;
+                }
+                .custom-gantt-scroll::-webkit-scrollbar-track {
+                    background: #f1f1f1;
+                    border-radius: 6px;
+                }
+                .custom-gantt-scroll::-webkit-scrollbar-thumb {
+                    background: #cbd5e1;
+                    border-radius: 6px;
+                    border: 3px solid #f1f1f1;
+                }
+                .custom-gantt-scroll::-webkit-scrollbar-thumb:hover {
+                    background: #94a3b8;
+                }
+                .dark .custom-gantt-scroll::-webkit-scrollbar-track {
+                    background: #1f2937;
+                }
+                .dark .custom-gantt-scroll::-webkit-scrollbar-thumb {
+                    background: #4b5563;
+                    border-radius: 6px;
+                    border: 3px solid #1f2937;
+                }
+                .dark .custom-gantt-scroll::-webkit-scrollbar-thumb:hover {
+                    background: #6b7280;
+                }
+            `}</style>
             
             {/* Controls Toolbar */}
             <div className="p-2 border-b border-gray-200/50 dark:border-gray-700/50 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50 rounded-t-lg">
@@ -201,7 +271,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
             </div>
 
             {/* Main Chart Area */}
-            <div className="flex-1 overflow-auto relative" ref={containerRef}>
+            <div className="flex-1 overflow-x-scroll overflow-y-auto relative custom-gantt-scroll" ref={containerRef}>
                 {/* 
                    KEY LAYOUT FIX:
                    Ensure the container for rows and grid is exactly the same width.
@@ -217,8 +287,14 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                             {/* Empty corner for Y axis */}
                             <div 
                                 style={{ width: `${yAxisWidth}px` }} 
-                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 z-40 backdrop-blur-sm"
-                            ></div>
+                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 z-40 backdrop-blur-sm relative"
+                            >
+                                <div 
+                                    onMouseDown={handleMouseDown}
+                                    className="absolute right-0 top-0 bottom-0 w-3 -mr-1.5 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-600/60 z-50 transition-colors"
+                                    title="Arrastar para redimensionar a coluna de atividades"
+                                />
+                            </div>
                             
                             {/* Days Loop */}
                             {days.map(day => (
@@ -236,9 +312,16 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                         <div className="flex border-b border-gray-300 dark:border-gray-600">
                              <div 
                                 style={{ width: `${yAxisWidth}px` }} 
-                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 flex items-center px-3 text-xs font-bold text-gray-700 dark:text-gray-200 z-40 backdrop-blur-sm"
+                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 flex items-center justify-between px-3 text-xs font-bold text-gray-700 dark:text-gray-200 z-40 backdrop-blur-sm relative select-none"
                             >
-                                Atividade
+                                <span className="truncate pr-2">Atividade</span>
+                                <div 
+                                    onMouseDown={handleMouseDown}
+                                    className="absolute right-0 top-0 bottom-0 w-3 -mr-1.5 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-600/60 z-50 flex items-center justify-center transition-colors group"
+                                    title="Arrastar para redimensionar a coluna de atividades"
+                                >
+                                    <div className="w-[2px] h-4 bg-gray-400 dark:bg-gray-500 group-hover:bg-blue-500 rounded" />
+                                </div>
                             </div>
                             {days.map(day => (
                                 <React.Fragment key={`hours-${day.toISOString()}`}>
@@ -299,9 +382,9 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                                     title={`${activity.tag} - ${activity.descricao}`}
                                     onClick={() => onEdit(activity)}
                                 >
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between gap-1">
                                         <p className="font-bold truncate text-xs text-gray-800 dark:text-gray-200 group-hover:text-primary-600 transition-colors">{activity.descricao}</p>
-                                        <div className={`w-2 h-2 rounded-full ${STATUS_COLORS[activity.status]}`}></div>
+                                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[activity.status]}`}></div>
                                     </div>
                                     {!isCompact && (
                                         <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{activity.tag}</p>
