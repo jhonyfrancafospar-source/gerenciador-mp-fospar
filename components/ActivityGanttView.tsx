@@ -16,6 +16,53 @@ const STATUS_COLORS: { [key in ActivityStatus]: string } = {
     [ActivityStatus.Closed]: 'bg-green-600',
 };
 
+// 24-day shift rotation schedule based on standard operational matrix
+const SHIFT_SCHEDULE_24_DAYS: Record<'00-08' | '08-16' | '16-00', string>[] = [
+    { '00-08': 'B', '08-16': 'A', '16-00': 'D' }, // Day 0
+    { '00-08': 'B', '08-16': 'A', '16-00': 'D' }, // Day 1 (12/09/2026)
+    { '00-08': 'C', '08-16': 'A', '16-00': 'D' }, // Day 2
+    { '00-08': 'C', '08-16': 'A', '16-00': 'D' }, // Day 3
+    { '00-08': 'C', '08-16': 'A', '16-00': 'B' }, // Day 4
+    { '00-08': 'C', '08-16': 'A', '16-00': 'B' }, // Day 5
+    { '00-08': 'C', '08-16': 'D', '16-00': 'B' }, // Day 6
+    { '00-08': 'C', '08-16': 'D', '16-00': 'B' }, // Day 7
+    { '00-08': 'A', '08-16': 'D', '16-00': 'B' }, // Day 8
+    { '00-08': 'A', '08-16': 'D', '16-00': 'B' }, // Day 9
+    { '00-08': 'A', '08-16': 'D', '16-00': 'C' }, // Day 10
+    { '00-08': 'A', '08-16': 'D', '16-00': 'C' }, // Day 11
+    { '00-08': 'A', '08-16': 'B', '16-00': 'C' }, // Day 12
+    { '00-08': 'A', '08-16': 'B', '16-00': 'C' }, // Day 13
+    { '00-08': 'D', '08-16': 'B', '16-00': 'C' }, // Day 14
+    { '00-08': 'D', '08-16': 'B', '16-00': 'C' }, // Day 15
+    { '00-08': 'D', '08-16': 'B', '16-00': 'A' }, // Day 16
+    { '00-08': 'D', '08-16': 'B', '16-00': 'A' }, // Day 17
+    { '00-08': 'D', '08-16': 'C', '16-00': 'A' }, // Day 18
+    { '00-08': 'D', '08-16': 'C', '16-00': 'A' }, // Day 19
+    { '00-08': 'B', '08-16': 'C', '16-00': 'A' }, // Day 20
+    { '00-08': 'B', '08-16': 'C', '16-00': 'A' }, // Day 21
+    { '00-08': 'B', '08-16': 'C', '16-00': 'D' }, // Day 22
+    { '00-08': 'B', '08-16': 'C', '16-00': 'D' }, // Day 23
+];
+
+const SHIFT_STYLE_MAP: Record<string, { bg: string; text: string }> = {
+    'A': { bg: 'bg-[#00a2e8]', text: 'text-black font-black' },
+    'B': { bg: 'bg-[#c0c0c0]', text: 'text-black font-black' },
+    'C': { bg: 'bg-[#ffff00]', text: 'text-black font-black' },
+    'D': { bg: 'bg-[#c084fc]', text: 'text-black font-black' },
+};
+
+const getShiftInfo = (date: Date, shiftKey: '00-08' | '08-16' | '16-00') => {
+    const anchor = Date.UTC(2026, 8, 12); // 12/09/2026
+    const target = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffDays = Math.floor((target - anchor) / (1000 * 60 * 60 * 24));
+    let dayIndex = (1 + (diffDays % 24)) % 24;
+    if (dayIndex < 0) dayIndex += 24;
+
+    const letter = SHIFT_SCHEDULE_24_DAYS[dayIndex]?.[shiftKey] || 'A';
+    const style = SHIFT_STYLE_MAP[letter] || { bg: 'bg-gray-300', text: 'text-black font-bold' };
+    return { letter, ...style };
+};
+
 const GanttBar: React.FC<{ activity: Activity, chartStart: number, hourWidth: number, height: number, onClick: () => void }> = ({ activity, chartStart, hourWidth, height, onClick }) => {
     const start = new Date(activity.horaInicio).getTime();
     const end = new Date(activity.horaFim).getTime();
@@ -334,6 +381,41 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                                             {i.toString().padStart(2, '0')}:00
                                         </div>
                                     ))}
+                                </React.Fragment>
+                            ))}
+                        </div>
+
+                        {/* Row 3: Turnos */}
+                        <div className="flex border-b border-gray-300 dark:border-gray-600">
+                            <div 
+                                style={{ width: `${yAxisWidth}px` }} 
+                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 flex items-center justify-between px-3 text-xs font-bold text-gray-700 dark:text-gray-200 z-40 backdrop-blur-sm relative select-none"
+                            >
+                                <span className="truncate pr-2">Turno</span>
+                                <div 
+                                    onMouseDown={handleMouseDown}
+                                    className="absolute right-0 top-0 bottom-0 w-3 -mr-1.5 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-600/60 z-50 flex items-center justify-center transition-colors group"
+                                    title="Arrastar para redimensionar a coluna de atividades"
+                                >
+                                    <div className="w-[2px] h-4 bg-gray-400 dark:bg-gray-500 group-hover:bg-blue-500 rounded" />
+                                </div>
+                            </div>
+                            {days.map(day => (
+                                <React.Fragment key={`shift-row-${day.toISOString()}`}>
+                                    {(['00-08', '08-16', '16-00'] as const).map(shiftKey => {
+                                        const shiftInfo = getShiftInfo(day, shiftKey);
+                                        const blockWidth = 8 * hourWidth;
+                                        return (
+                                            <div 
+                                                key={`${day.toISOString()}-${shiftKey}`}
+                                                style={{ width: `${blockWidth}px` }}
+                                                className={`flex-shrink-0 text-center text-xs py-0.5 border-r border-gray-300 dark:border-gray-600 box-border ${shiftInfo.bg} ${shiftInfo.text} flex items-center justify-center select-none font-extrabold uppercase tracking-wide`}
+                                                title={`Turno ${shiftInfo.letter} (${shiftKey === '00-08' ? '00:00 - 08:00' : shiftKey === '08-16' ? '08:00 - 16:00' : '16:00 - 00:00'})`}
+                                            >
+                                                {blockWidth >= 70 ? `Turno ${shiftInfo.letter}` : shiftInfo.letter}
+                                            </div>
+                                        );
+                                    })}
                                 </React.Fragment>
                             ))}
                         </div>
