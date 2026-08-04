@@ -935,7 +935,7 @@ const App: React.FC = () => {
             case 'list': return <ActivityListView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} customStatusLabels={statusLabels} />;
             case 'board': return <ActivityBoardView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'calendar': return <ActivityCalendarView activities={filteredAndSortedActivities} onEdit={openEditModal} customStatusLabels={statusLabels} onDateChange={handleActivityDateChange} userRole={user?.role} />;
-            case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} />;
+            case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateActivity={handleUpdateActivity} />;
             case 'report': return <ReportView activities={filteredAndSortedActivities} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'audit': return <AuditLogView logs={auditLogs} />;
             case 'manpower': return <ManPowerView activities={filteredAndSortedActivities} />;

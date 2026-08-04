@@ -6,6 +6,7 @@ import { ActivityStatus } from '../types';
 interface ActivityGanttViewProps {
     activities: Activity[];
     onEdit: (activity: Activity) => void;
+    onUpdateActivity?: (activity: Activity) => void;
 }
 
 const STATUS_COLORS: { [key in ActivityStatus]: string } = {
@@ -63,44 +64,209 @@ const getShiftInfo = (date: Date, shiftKey: '00-08' | '08-16' | '16-00') => {
     return { letter, ...style };
 };
 
-const GanttBar: React.FC<{ activity: Activity, chartStart: number, hourWidth: number, height: number, onClick: () => void }> = ({ activity, chartStart, hourWidth, height, onClick }) => {
-    const start = new Date(activity.horaInicio).getTime();
-    const end = new Date(activity.horaFim).getTime();
+const formatDateRange = (startMs: number, endMs: number) => {
+    const start = new Date(startMs);
+    const end = new Date(endMs);
+    const startDateStr = start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    const startTimeStr = start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const endDateStr = end.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    const endTimeStr = end.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-    // Calculate position relative to chart start
-    // Ensure we account for strict pixel arithmetic to align with the grid
-    const diffMs = start - chartStart;
-    const durationMs = end - start;
-    
-    // 1 hour = hourWidth pixels
-    // 1 ms = hourWidth / 3600000 pixels
+    if (startDateStr === endDateStr) {
+        return `${startDateStr} ${startTimeStr} - ${endTimeStr}`;
+    }
+    return `${startDateStr} ${startTimeStr} às ${endDateStr} ${endTimeStr}`;
+};
+
+interface GanttBarProps {
+    activity: Activity;
+    chartStart: number;
+    hourWidth: number;
+    height: number;
+    onClick: () => void;
+    onUpdateActivity?: (activity: Activity) => void;
+    scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+}
+
+const GanttBar: React.FC<GanttBarProps> = ({ 
+    activity, 
+    chartStart, 
+    hourWidth, 
+    height, 
+    onClick, 
+    onUpdateActivity,
+    scrollContainerRef 
+}) => {
+    const actStartMs = new Date(activity.horaInicio).getTime();
+    const actEndMs = new Date(activity.horaFim).getTime();
+
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragType, setDragType] = useState<'move' | 'resize-left' | 'resize-right' | null>(null);
+    const [tempStartMs, setTempStartMs] = useState(actStartMs);
+    const [tempEndMs, setTempEndMs] = useState(actEndMs);
+
+    const tempStartRef = useRef(actStartMs);
+    const tempEndRef = useRef(actEndMs);
+
+    useEffect(() => {
+        if (!isDragging) {
+            setTempStartMs(actStartMs);
+            setTempEndMs(actEndMs);
+            tempStartRef.current = actStartMs;
+            tempEndRef.current = actEndMs;
+        }
+    }, [activity.horaInicio, activity.horaFim, isDragging]);
+
+    const handleStartDrag = (e: React.MouseEvent, type: 'move' | 'resize-left' | 'resize-right') => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const initialMouseX = e.clientX;
+        const initialScrollLeft = scrollContainerRef.current?.scrollLeft || 0;
+        const origStart = new Date(activity.horaInicio).getTime();
+        const origEnd = new Date(activity.horaFim).getTime();
+        const origDuration = origEnd - origStart;
+
+        let hasMoved = false;
+
+        const handleMouseMove = (moveEv: MouseEvent) => {
+            const currentScrollLeft = scrollContainerRef.current?.scrollLeft || 0;
+            const deltaX = (moveEv.clientX + currentScrollLeft) - (initialMouseX + initialScrollLeft);
+
+            if (!hasMoved && Math.abs(moveEv.clientX - initialMouseX) > 3) {
+                hasMoved = true;
+                setIsDragging(true);
+                setDragType(type);
+            }
+
+            if (!hasMoved) return;
+
+            const pxPerMs = hourWidth / 3600000;
+            const rawDeltaMs = deltaX / pxPerMs;
+
+            // Snap to 15 minutes (900,000 ms)
+            const SNAP_MS = 15 * 60 * 1000;
+            const snappedDeltaMs = Math.round(rawDeltaMs / SNAP_MS) * SNAP_MS;
+
+            let newStart = origStart;
+            let newEnd = origEnd;
+
+            if (type === 'move') {
+                newStart = origStart + snappedDeltaMs;
+                newEnd = newStart + origDuration;
+            } else if (type === 'resize-left') {
+                newStart = Math.min(origStart + snappedDeltaMs, origEnd - SNAP_MS);
+                newEnd = origEnd;
+            } else if (type === 'resize-right') {
+                newStart = origStart;
+                newEnd = Math.max(origEnd + snappedDeltaMs, origStart + SNAP_MS);
+            }
+
+            setTempStartMs(newStart);
+            setTempEndMs(newEnd);
+            tempStartRef.current = newStart;
+            tempEndRef.current = newEnd;
+
+            // Auto-scroll when near horizontal edges
+            if (scrollContainerRef.current) {
+                const rect = scrollContainerRef.current.getBoundingClientRect();
+                if (moveEv.clientX > rect.right - 80) {
+                    scrollContainerRef.current.scrollLeft += 20;
+                } else if (moveEv.clientX < rect.left + 180) {
+                    scrollContainerRef.current.scrollLeft -= 20;
+                }
+            }
+        };
+
+        const handleMouseUp = () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+
+            if (hasMoved) {
+                setIsDragging(false);
+                setDragType(null);
+
+                const finalStart = tempStartRef.current;
+                const finalEnd = tempEndRef.current;
+
+                if (finalStart !== origStart || finalEnd !== origEnd) {
+                    const durationHours = ((finalEnd - finalStart) / 3600000).toFixed(1);
+                    if (onUpdateActivity) {
+                        onUpdateActivity({
+                            ...activity,
+                            horaInicio: new Date(finalStart).toISOString(),
+                            horaFim: new Date(finalEnd).toISOString(),
+                            duracao: `${durationHours}h`
+                        });
+                    }
+                }
+            } else {
+                onClick();
+            }
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    };
+
+    const displayStartMs = isDragging ? tempStartMs : actStartMs;
+    const displayEndMs = isDragging ? tempEndMs : actEndMs;
+
     const pxPerMs = hourWidth / 3600000;
-    
+    const diffMs = displayStartMs - chartStart;
+    const durationMs = displayEndMs - displayStartMs;
+
     const left = diffMs * pxPerMs;
-    const width = Math.max(durationMs * pxPerMs, 4); // Min width 4px
-    
+    const width = Math.max(durationMs * pxPerMs, 6);
+
     const barColor = STATUS_COLORS[activity.status] || 'bg-gray-500';
 
     return (
         <div 
-            className={`absolute top-1/2 -translate-y-1/2 rounded-sm opacity-90 hover:opacity-100 transition-all flex items-center px-2 text-[10px] font-medium text-white shadow-sm ${barColor} cursor-pointer hover:ring-1 hover:ring-white hover:z-10 overflow-hidden whitespace-nowrap`}
+            className={`absolute top-1/2 -translate-y-1/2 rounded-md flex items-center px-2 text-[10px] font-medium text-white shadow-sm ${barColor} select-none group transition-shadow ${
+                isDragging ? 'ring-2 ring-blue-400 z-50 cursor-grabbing shadow-2xl opacity-95 scale-[1.01]' : 'cursor-grab hover:ring-1 hover:ring-white hover:z-20 opacity-90 hover:opacity-100'
+            }`}
             style={{ 
                 left: `${left}px`, 
                 width: `${width}px`, 
-                height: `${height * 0.7}px`, // Bar uses 70% of row height
+                height: `${height * 0.72}px`,
             }}
-            title={`${activity.tag} - ${activity.descricao}\n${new Date(activity.horaInicio).toLocaleString()} - ${new Date(activity.horaFim).toLocaleString()}`}
-            onClick={(e) => {
-                e.stopPropagation();
-                onClick();
-            }}
+            onMouseDown={(e) => handleStartDrag(e, 'move')}
+            title={!isDragging ? `${activity.tag} - ${activity.descricao}\n${new Date(activity.horaInicio).toLocaleString()} - ${new Date(activity.horaFim).toLocaleString()}\n(Clique e arraste para realocar dia/horário)` : undefined}
         >
-            {width > 40 && <span className="truncate">{activity.descricao}</span>}
+            {/* Left Resize Handle */}
+            <div 
+                onMouseDown={(e) => handleStartDrag(e, 'resize-left')}
+                className="absolute left-0 top-0 bottom-0 w-2.5 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40 rounded-l-md flex items-center justify-center transition-opacity z-10"
+                title="Arrastar para alterar horário de início"
+            >
+                <div className="w-[2px] h-3 bg-white/90 rounded-full" />
+            </div>
+
+            {/* Label */}
+            {width > 35 && <span className="truncate pointer-events-none px-1 font-semibold">{activity.descricao}</span>}
+
+            {/* Right Resize Handle */}
+            <div 
+                onMouseDown={(e) => handleStartDrag(e, 'resize-right')}
+                className="absolute right-0 top-0 bottom-0 w-2.5 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40 rounded-r-md flex items-center justify-center transition-opacity z-10"
+                title="Arrastar para alterar horário de fim"
+            >
+                <div className="w-[2px] h-3 bg-white/90 rounded-full" />
+            </div>
+
+            {/* Live Dragging Floating Tooltip */}
+            {isDragging && (
+                <div className="absolute -top-11 left-1/2 -translate-x-1/2 bg-gray-900/95 text-white dark:bg-gray-100/95 dark:text-gray-900 text-[11px] font-extrabold py-1 px-3 rounded-lg shadow-2xl whitespace-nowrap z-50 pointer-events-none flex items-center gap-2 border border-blue-500/50 backdrop-blur-md">
+                    <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span>
+                    <span>{formatDateRange(displayStartMs, displayEndMs)}</span>
+                </div>
+            )}
         </div>
     );
 };
 
-export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities, onEdit }) => {
+export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities, onEdit, onUpdateActivity }) => {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [hourWidth, setHourWidth] = useState(60); // Zoom level
     const [isCompact, setIsCompact] = useState(false); // Row height toggle
@@ -190,6 +356,69 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
 
         return { chartStart: startDate.getTime(), chartEnd: endDate.getTime(), days: daysArr };
     }, [activities]);
+
+    // Map of H x H (man-hours in minutes) calculated for each 8-hour shift block
+    const shiftManPowerMap = useMemo(() => {
+        const map = new Map<string, number>();
+        for (const day of days) {
+            for (const shiftKey of ['00-08', '08-16', '16-00'] as const) {
+                const shiftStart = new Date(day);
+                const shiftEnd = new Date(day);
+
+                if (shiftKey === '00-08') {
+                    shiftStart.setHours(0, 0, 0, 0);
+                    shiftEnd.setHours(8, 0, 0, 0);
+                } else if (shiftKey === '08-16') {
+                    shiftStart.setHours(8, 0, 0, 0);
+                    shiftEnd.setHours(16, 0, 0, 0);
+                } else { // '16-00'
+                    shiftStart.setHours(16, 0, 0, 0);
+                    shiftEnd.setHours(24, 0, 0, 0);
+                }
+
+                const startMs = shiftStart.getTime();
+                const endMs = shiftEnd.getTime();
+                let totalManMinutes = 0;
+
+                for (const act of activities) {
+                    const actStartMs = new Date(act.horaInicio).getTime();
+                    const actEndMs = new Date(act.horaFim).getTime();
+
+                    if (isNaN(actStartMs) || isNaN(actEndMs) || actEndMs <= actStartMs) continue;
+
+                    const overlapStart = Math.max(actStartMs, startMs);
+                    const overlapEnd = Math.min(actEndMs, endMs);
+
+                    if (overlapEnd > overlapStart) {
+                        const overlapMinutes = (overlapEnd - overlapStart) / (1000 * 60);
+
+                        const responsavelList = act.responsavel
+                            ? act.responsavel.split(/[\/;]/).map(s => s.trim()).filter(Boolean)
+                            : [];
+                        let headcount = responsavelList.length;
+                        if (headcount === 0 && act.efetivo) {
+                            const parsedEfetivo = parseInt(act.efetivo, 10);
+                            if (!isNaN(parsedEfetivo) && parsedEfetivo > 0) {
+                                headcount = parsedEfetivo;
+                            }
+                        }
+                        if (headcount === 0 && act.responsavel && act.responsavel.trim().length > 0) {
+                            headcount = 1;
+                        }
+                        if (headcount === 0) {
+                            headcount = 1;
+                        }
+
+                        totalManMinutes += overlapMinutes * headcount;
+                    }
+                }
+
+                const key = `${day.getTime()}_${shiftKey}`;
+                map.set(key, totalManMinutes);
+            }
+        }
+        return map;
+    }, [days, activities]);
 
     const totalHours = days.length * 24;
     const totalChartWidth = totalHours * hourWidth;
@@ -307,6 +536,11 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                         />
                         <span>Compacto</span>
                     </label>
+
+                    <div className="hidden md:flex items-center space-x-1.5 text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-md border border-blue-200/60 dark:border-blue-800/60">
+                        <span className="font-bold">💡 Dica:</span>
+                        <span>Clique e arraste as barras no gráfico para reordenar data ou horário.</span>
+                    </div>
                 </div>
                 
                 <button 
@@ -385,7 +619,52 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                             ))}
                         </div>
 
-                        {/* Row 3: Turnos */}
+                        {/* Row 3: H x H */}
+                        <div className="flex border-b border-gray-300 dark:border-gray-600 bg-gray-100/90 dark:bg-gray-800/90">
+                            <div 
+                                style={{ width: `${yAxisWidth}px` }} 
+                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 flex items-center justify-between px-3 text-xs font-bold text-gray-700 dark:text-gray-200 z-40 backdrop-blur-sm relative select-none py-0.5"
+                            >
+                                <span className="truncate pr-2">H x H</span>
+                                <div 
+                                    onMouseDown={handleMouseDown}
+                                    className="absolute right-0 top-0 bottom-0 w-3 -mr-1.5 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-600/60 z-50 flex items-center justify-center transition-colors group"
+                                    title="Arrastar para redimensionar a coluna de atividades"
+                                >
+                                    <div className="w-[2px] h-4 bg-gray-400 dark:bg-gray-500 group-hover:bg-blue-500 rounded" />
+                                </div>
+                            </div>
+                            {days.map(day => (
+                                <React.Fragment key={`hxh-row-${day.toISOString()}`}>
+                                    {(['00-08', '08-16', '16-00'] as const).map(shiftKey => {
+                                        const totalMins = shiftManPowerMap.get(`${day.getTime()}_${shiftKey}`) || 0;
+                                        const blockWidth = 8 * hourWidth;
+                                        const hours = Math.floor(totalMins / 60);
+                                        const mins = Math.round(totalMins % 60);
+                                        const displayText = totalMins === 0 
+                                            ? '0h' 
+                                            : mins > 0 
+                                                ? `${hours}h ${mins}m` 
+                                                : `${hours}h`;
+
+                                        return (
+                                            <div 
+                                                key={`${day.toISOString()}-${shiftKey}-hxh`}
+                                                style={{ width: `${blockWidth}px` }}
+                                                className="flex-shrink-0 text-center text-xs py-0.5 border-r border-gray-300 dark:border-gray-600 box-border bg-amber-500/10 dark:bg-amber-400/10 text-amber-900 dark:text-amber-200 flex items-center justify-center select-none font-bold tracking-tight"
+                                                title={`H x H calculado para o turno (${shiftKey === '00-08' ? '00:00 - 08:00' : shiftKey === '08-16' ? '08:00 - 16:00' : '16:00 - 00:00'}): ${displayText}`}
+                                            >
+                                                <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-900 dark:text-amber-200 px-2 py-0.5 rounded border border-amber-300/60 dark:border-amber-700/60 text-[11px] font-extrabold shadow-2xs">
+                                                    {displayText}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </React.Fragment>
+                            ))}
+                        </div>
+
+                        {/* Row 4: Turnos */}
                         <div className="flex border-b border-gray-300 dark:border-gray-600">
                             <div 
                                 style={{ width: `${yAxisWidth}px` }} 
@@ -437,13 +716,25 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                              {/* Draw grid lines for every hour - Exact match with header logic */}
                              {days.map((day, dayIdx) => (
                                 <React.Fragment key={`grid-${day.toISOString()}`}>
-                                    {Array.from({ length: 24 }, (_, i) => (
-                                        <div 
-                                            key={`grid-line-${dayIdx}-${i}`}
-                                            className={`absolute top-0 bottom-0 border-l box-border ${i === 0 ? 'border-gray-300 dark:border-gray-500' : 'border-gray-100 dark:border-gray-700/50 border-dashed'}`}
-                                            style={{ left: `${(dayIdx * 24 + i) * hourWidth}px` }}
-                                        ></div>
-                                    ))}
+                                    {Array.from({ length: 24 }, (_, i) => {
+                                        const isDayStart = i === 0;
+                                        const isShiftBoundary = i === 8 || i === 16;
+                                        
+                                        let lineClass = 'border-l border-dashed border-gray-200/80 dark:border-gray-700/40';
+                                        if (isDayStart) {
+                                            lineClass = 'border-l-2 border-gray-500 dark:border-gray-400 z-10';
+                                        } else if (isShiftBoundary) {
+                                            lineClass = 'border-l-2 border-dashed border-gray-400 dark:border-gray-400 z-10';
+                                        }
+
+                                        return (
+                                            <div 
+                                                key={`grid-line-${dayIdx}-${i}`}
+                                                className={`absolute top-0 bottom-0 box-border ${lineClass}`}
+                                                style={{ left: `${(dayIdx * 24 + i) * hourWidth}px` }}
+                                            ></div>
+                                        );
+                                    })}
                                 </React.Fragment>
                              ))}
 
@@ -481,6 +772,8 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                                         hourWidth={hourWidth} 
                                         height={rowHeight}
                                         onClick={() => onEdit(activity)} 
+                                        onUpdateActivity={onUpdateActivity}
+                                        scrollContainerRef={containerRef}
                                     />
                                 </div>
                             </div>
