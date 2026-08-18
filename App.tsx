@@ -800,7 +800,7 @@ const App: React.FC = () => {
                 supervisor: mapping.supervisor ? (row[mapping.supervisor] || '') : '',
                 area: mapping.area ? (row[mapping.area] || '') : '',
                 turno: mapping.turno ? (row[mapping.turno] || '') : '',
-                empresa: 'FOSPAR', 
+                empresa: (mapping.empresa && row[mapping.empresa]) ? String(row[mapping.empresa]).trim() : 'FOSPAR', 
                 efetivo: '', 
                 jornada: '',
                 horaInicio: startISO,

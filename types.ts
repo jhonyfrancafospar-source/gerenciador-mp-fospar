@@ -108,6 +108,7 @@ export interface ImportMapping {
     idMp: string;
     tag: string;
     descricao: string;
+    empresa?: string;
     responsavel: string; // The actual person doing it (mapped from Efetivo in previous logic, but now configurable)
     responsavelSeparator?: string; // Separator used in the responsavel column (e.g. /, ;, ,)
     supervisor: string; // Mapped from Responsavel in previous logic

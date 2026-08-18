@@ -30,7 +30,8 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
     // Resizing State
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
         tag: 90,
-        descricao: 280,
+        descricao: 260,
+        empresa: 100,
         responsavel: 130,
         supervisor: 130,
         turno: 70,
@@ -172,6 +173,7 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                     <tr>
                         <Th id="tag" label="TAG" sortKey="tag" />
                         <Th id="descricao" label="Descrição" sortKey="descricao" />
+                        <Th id="empresa" label="Empresa" sortKey="empresa" />
                         <Th id="responsavel" label="Responsável" sortKey="responsavel" />
                         <Th id="supervisor" label="Supervisor" sortKey="supervisor" />
                         <Th id="turno" label="Turno" sortKey="turno" />
@@ -204,6 +206,12 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                                     onClick={() => onEdit(activity)}
                                 >
                                     {activity.descricao}
+                                </td>
+                                <td 
+                                    className="px-3 py-1.5 truncate overflow-hidden text-gray-700 dark:text-gray-300"
+                                    title={activity.empresa || 'FOSPAR'}
+                                >
+                                    {activity.empresa || 'FOSPAR'}
                                 </td>
                                 <td className="px-3 py-1.5 truncate overflow-hidden">{activity.responsavel}</td>
                                 <td className="px-3 py-1.5 truncate overflow-hidden">{activity.supervisor}</td>

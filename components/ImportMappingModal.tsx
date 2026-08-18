@@ -16,6 +16,7 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         idMp: '',
         tag: '',
         descricao: '',
+        empresa: '',
         responsavel: '',
         responsavelSeparator: '/',
         supervisor: '',
@@ -35,6 +36,7 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         { key: 'idMp', label: 'ID MP', help: 'Identificador da Manutenção (ex: MP GR 01-08)' },
         { key: 'tag', label: 'TAG', help: 'Tag do equipamento (ex: 601GR01)' },
         { key: 'descricao', label: 'Descrição', help: 'O que deve ser feito' },
+        { key: 'empresa', label: 'Empresa', help: 'Empresa prestadora / executante (ex: FOSPAR)' },
         { key: 'responsavel', label: 'Responsável (Executante)', help: 'Quem vai executar (na planilha antiga: Efetivo)' },
         { key: 'supervisor', label: 'Supervisor', help: 'Responsável pela área/turno (na planilha antiga: Responsável)' },
         { key: 'area', label: 'Área', help: 'Localização (ex: Linha 01)' },
@@ -75,6 +77,7 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         newMapping.idMp = findBestMatch(['id mp', 'id da mp']);
         newMapping.tag = findBestMatch(['tag', 'equipamento']);
         newMapping.descricao = findBestMatch(['descrição', 'descricao', 'atividade']);
+        newMapping.empresa = findBestMatch(['empresa', 'contratada', 'prestador', 'terceiro', 'fornecedor', 'company']);
         newMapping.responsavel = findBestMatch(['efetivo', 'executante']); 
         newMapping.supervisor = findBestMatch(['responsável', 'responsavel', 'supervisor']);
         newMapping.area = findBestMatch(['área', 'area', 'setor']);
