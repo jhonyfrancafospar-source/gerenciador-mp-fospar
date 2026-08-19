@@ -28,6 +28,7 @@ interface HeaderProps {
     setCurrentView: (view: ViewType) => void;
     filters: FilterType;
     setFilters: (filters: FilterType) => void;
+    empresas?: string[];
     turnos: string[];
     responsaveis: string[];
     supervisores: string[];
@@ -66,6 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
     setCurrentView,
     filters,
     setFilters,
+    empresas = [],
     turnos,
     responsaveis,
     supervisores,
@@ -267,7 +269,7 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                         <input
                             type="text"
-                            placeholder="Pesquisar por Tag, Descrição, Responsável, Supervisor, ID MP ou Área..."
+                            placeholder="Pesquisar por Tag, Descrição, Empresa, Responsável, Supervisor, ID MP ou Área..."
                             value={filters.search}
                             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
                             className="block w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white/80 dark:bg-gray-700/80 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-all"
@@ -282,7 +284,7 @@ export const Header: React.FC<HeaderProps> = ({
                         )}
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 items-end">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 items-end">
                         <div className="flex flex-col">
                             <label htmlFor="id-mp-filter" className="text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-0.5">ID MP</label>
                             <select
@@ -293,6 +295,17 @@ export const Header: React.FC<HeaderProps> = ({
                             >
                                 <option value="">Todos</option>
                                 {idMps.map(id => <option key={id} value={id}>{id}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex flex-col">
+                            <label htmlFor="empresa-filter" className="text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-0.5">Empresa</label>
+                            <select
+                                id="empresa-filter"
+                                value={filters.empresa || 'all'}
+                                onChange={(e) => setFilters({ ...filters, empresa: e.target.value })}
+                                className="w-full py-1 px-2 text-xs border rounded bg-white/80 dark:bg-gray-700/80 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500"
+                            >
+                                {empresas.map(emp => <option key={emp} value={emp}>{emp === 'all' ? 'Todas' : emp}</option>)}
                             </select>
                         </div>
                         <div className="flex flex-col">
@@ -344,6 +357,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                             <button
                                 onClick={() => setFilters({
+                                    empresa: 'all',
                                     turno: 'all',
                                     responsavel: 'all',
                                     supervisor: 'all',

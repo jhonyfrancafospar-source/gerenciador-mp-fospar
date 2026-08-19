@@ -14,6 +14,7 @@ interface TopFilterBarProps {
     toggleTheme: () => void;
     filters: FilterType;
     setFilters: (filters: FilterType) => void;
+    empresas?: string[];
     turnos: string[];
     responsaveis: string[];
     supervisores: string[];
@@ -28,6 +29,7 @@ export const TopFilterBar: React.FC<TopFilterBarProps> = ({
     toggleTheme,
     filters,
     setFilters,
+    empresas = [],
     turnos,
     responsaveis,
     supervisores,
@@ -115,6 +117,20 @@ export const TopFilterBar: React.FC<TopFilterBarProps> = ({
                             >
                                 <option value="">MP: Todas</option>
                                 {idMps.map(id => <option key={id} value={id}>{id}</option>)}
+                            </select>
+                        </div>
+
+                        {/* Empresa */}
+                        <div className="min-w-[110px]">
+                            <label htmlFor="empresa-filter" className="lg:hidden text-xs font-bold text-gray-500 dark:text-gray-400 mb-1 block">Empresa</label>
+                            <select
+                                id="empresa-filter"
+                                value={filters.empresa || 'all'}
+                                onChange={(e) => setFilters({ ...filters, empresa: e.target.value })}
+                                className="w-full py-1.5 px-2 text-xs border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 focus:ring-primary-500"
+                            >
+                                <option value="all">Empresa: Todas</option>
+                                {empresas.filter(e => e !== 'all').map(e => <option key={e} value={e}>{e}</option>)}
                             </select>
                         </div>
 

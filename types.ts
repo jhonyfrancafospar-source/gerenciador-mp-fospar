@@ -2,6 +2,7 @@
 export type ViewType = 'dashboard' | 'list' | 'board' | 'gantt' | 'report' | 'audit' | 'manpower' | 'calendar';
 
 export type FilterType = {
+    empresa?: string;
     turno: string;
     responsavel: string;
     supervisor: string;

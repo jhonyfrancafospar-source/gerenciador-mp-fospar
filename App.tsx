@@ -59,6 +59,7 @@ const App: React.FC = () => {
     const [initialMapping, setInitialMapping] = useState<ImportMapping | undefined>(undefined);
 
     const [filters, setFilters] = useState<FilterType>({ 
+        empresa: 'all',
         turno: 'all', 
         responsavel: 'all', 
         supervisor: 'all',
@@ -897,6 +898,7 @@ const App: React.FC = () => {
 
     const filteredAndSortedActivities = useMemo(() => {
         let filtered = activities.filter(activity => {
+            const empresaMatch = !filters.empresa || filters.empresa === 'all' || (activity.empresa || 'FOSPAR') === filters.empresa;
             const turnoMatch = filters.turno === 'all' || activity.turno === filters.turno;
             const responsavelMatch = filters.responsavel === 'all' || activity.responsavel === filters.responsavel;
             const supervisorMatch = filters.supervisor === 'all' || (activity.supervisor || '') === filters.supervisor;
@@ -912,13 +914,14 @@ const App: React.FC = () => {
             const searchMatch = !filters.search || (
                 activity.tag.toLowerCase().includes(searchLower) ||
                 activity.descricao.toLowerCase().includes(searchLower) ||
+                ((activity.empresa || 'FOSPAR').toLowerCase().includes(searchLower)) ||
                 activity.responsavel.toLowerCase().includes(searchLower) ||
                 (activity.supervisor && activity.supervisor.toLowerCase().includes(searchLower)) ||
                 (activity.idMp && activity.idMp.toLowerCase().includes(searchLower)) ||
                 activity.area.toLowerCase().includes(searchLower)
             );
 
-            return turnoMatch && responsavelMatch && supervisorMatch && idMpMatch && myActivitiesMatch && searchMatch;
+            return empresaMatch && turnoMatch && responsavelMatch && supervisorMatch && idMpMatch && myActivitiesMatch && searchMatch;
         });
         return filtered;
     }, [activities, filters, user]);
@@ -944,6 +947,7 @@ const App: React.FC = () => {
     };
 
     // Filter helpers
+    const uniqueEmpresas = useMemo(() => ['all', ...Array.from(new Set(activities.map(a => a.empresa || 'FOSPAR').filter(Boolean)))], [activities]);
     const uniqueTurnos = useMemo(() => ['all', ...Array.from(new Set(activities.map(a => a.turno).filter(Boolean)))], [activities]);
     const uniqueResponsaveis = useMemo(() => ['all', ...Array.from(new Set(activities.map(a => a.responsavel)))], [activities]);
     const uniqueSupervisores = useMemo(() => ['all', ...Array.from(new Set(activities.map(a => a.supervisor || '').filter(Boolean)))], [activities]);
@@ -999,6 +1003,7 @@ const App: React.FC = () => {
                 setCurrentView={setCurrentView}
                 filters={filters}
                 setFilters={setFilters}
+                empresas={uniqueEmpresas}
                 turnos={uniqueTurnos}
                 responsaveis={uniqueResponsaveis}
                 supervisores={uniqueSupervisores}
