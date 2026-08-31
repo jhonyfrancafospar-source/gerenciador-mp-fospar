@@ -26,7 +26,10 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         dateFormat: 'DD/MM/AAAA',
         horaInicio: '',
         horaFim: '',
+        horaInicioReal: '',
+        horaFimReal: '',
         duracao: '',
+        progresso: '',
         criticidade: '',
     };
 
@@ -45,6 +48,9 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         { key: 'horaInicio', label: 'Hora Início', help: 'Horário planejado de início' },
         { key: 'horaFim', label: 'Hora Fim', help: 'Horário planejado de fim' },
         { key: 'duracao', label: 'Duração', help: 'Tempo estimado (opcional, substitui o cálculo automático)' },
+        { key: 'progresso', label: '% Avanço', help: 'Porcentagem de progresso físico (0 a 100)' },
+        { key: 'horaInicioReal', label: 'Início Real', help: 'Data/Hora de início real de execução' },
+        { key: 'horaFimReal', label: 'Fim Real', help: 'Data/Hora de fim real de execução' },
         { key: 'criticidade', label: 'Criticidade', help: 'Normal, Alta, Urgente' },
     ];
 
@@ -86,6 +92,9 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         newMapping.horaInicio = findBestMatch(['início', 'inicio', 'hora inicio']);
         newMapping.horaFim = findBestMatch(['fim', 'término', 'termino', 'hora fim']);
         newMapping.duracao = findBestMatch(['duração', 'duracao', 'tempo', 'estimado']);
+        newMapping.progresso = findBestMatch(['avanço', 'progresso', 'avanço físico', '% avanço', '% progresso']);
+        newMapping.horaInicioReal = findBestMatch(['início real', 'inicio real', 'real início', 'execução início']);
+        newMapping.horaFimReal = findBestMatch(['fim real', 'término real', 'termino real', 'real fim', 'execução fim']);
         newMapping.criticidade = findBestMatch(['criticidade', 'prioridade']);
 
         setMapping(newMapping);

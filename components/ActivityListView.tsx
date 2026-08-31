@@ -39,6 +39,7 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
         horario: 110,
         duracao: 70,
         criticidade: 90,
+        progresso: 100,
         status: 130,
         anexos: 60,
         acoes: 70
@@ -87,6 +88,13 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                 return sortConfig.direction === 'asc' 
                     ? new Date(aValue).getTime() - new Date(bValue).getTime()
                     : new Date(bValue).getTime() - new Date(aValue).getTime();
+            }
+
+            // Handle Progresso
+            if (sortConfig.key === 'progresso') {
+                const aProg = a.status === ActivityStatus.Closed ? 100 : (a.progresso !== undefined ? Number(a.progresso) : 0);
+                const bProg = b.status === ActivityStatus.Closed ? 100 : (b.progresso !== undefined ? Number(b.progresso) : 0);
+                return sortConfig.direction === 'asc' ? aProg - bProg : bProg - aProg;
             }
 
             // Handle Strings
@@ -181,6 +189,7 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                         <Th id="horario" label="Horário" sortKey="horaInicio" />
                         <Th id="duracao" label="Duração" sortKey="duracao" />
                         <Th id="criticidade" label="Criticidade" sortKey="criticidade" />
+                        <Th id="progresso" label="% Avanço" sortKey="progresso" />
                         <Th id="status" label="Status" sortKey="statusLabel" />
                         <Th id="anexos" label="Anexos" className="print:hidden" />
                         <Th id="acoes" label="Ações" className="print:hidden" />
@@ -227,6 +236,19 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                                     <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${getCriticidadeClasses(activity.criticidade)}`}>
                                         {activity.criticidade}
                                     </span>
+                                </td>
+                                <td className="px-3 py-1.5 whitespace-nowrap">
+                                    <div className="flex items-center space-x-1.5">
+                                        <div className="w-10 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden flex-shrink-0">
+                                            <div 
+                                                className={`h-1.5 rounded-full ${activity.status === ActivityStatus.Closed ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                                                style={{ width: `${activity.status === ActivityStatus.Closed ? 100 : (activity.progresso || 0)}%` }}
+                                            />
+                                        </div>
+                                        <span className="font-semibold text-[11px] text-gray-700 dark:text-gray-300">
+                                            {activity.status === ActivityStatus.Closed ? 100 : (activity.progresso || 0)}%
+                                        </span>
+                                    </div>
                                 </td>
                                 <td className="px-3 py-1.5">
                                     <div className="print:hidden">

@@ -51,6 +51,7 @@ const initialFormState = (): Omit<Activity, 'id'> => ({
     horaInicioReal: '',
     horaFimReal: '',
     duracao: '01:00',
+    progresso: 0,
     "r eletrico": false,
     labapet: false,
     criticidade: Criticidade.Normal,
@@ -71,9 +72,13 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
 
     useEffect(() => {
         if (activity) {
+            const isClosed = activity.status === ActivityStatus.Closed;
+            const currentProg = isClosed ? 100 : (activity.progresso !== undefined ? Number(activity.progresso) : 0);
             setFormData({
                 ...activity,
                 idMp: activity.idMp || '',
+                empresa: activity.empresa || 'FOSPAR',
+                progresso: currentProg,
                 horaInicio: activity.horaInicio ? toLocalDateTimeLocal(activity.horaInicio) : '',
                 horaFim: activity.horaFim ? toLocalDateTimeLocal(activity.horaFim) : '',
                 horaInicioReal: activity.horaInicioReal ? toLocalDateTimeLocal(activity.horaInicioReal) : '',
@@ -93,6 +98,50 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
         if (type === 'checkbox') {
             const checked = (e.target as HTMLInputElement).checked;
             setFormData(prev => ({ ...prev, [name]: checked }));
+        } else if (name === 'status') {
+            const newStatus = value as ActivityStatus;
+            setFormData(prev => {
+                if (newStatus === ActivityStatus.Closed) {
+                    return {
+                        ...prev,
+                        status: newStatus,
+                        progresso: 100,
+                        horaFimReal: prev.horaFimReal || toLocalDateTimeLocal(new Date())
+                    };
+                } else if (newStatus === ActivityStatus.Open && prev.progresso === 100) {
+                    return {
+                        ...prev,
+                        status: newStatus,
+                        progresso: 0
+                    };
+                }
+                return { ...prev, status: newStatus };
+            });
+        } else if (name === 'progresso') {
+            const num = Math.min(100, Math.max(0, parseInt(value, 10) || 0));
+            setFormData(prev => {
+                let updatedStatus = prev.status;
+                let updatedFimReal = prev.horaFimReal;
+                let updatedInicioReal = prev.horaInicioReal;
+
+                if (num === 100) {
+                    updatedStatus = ActivityStatus.Closed;
+                    if (!updatedFimReal) updatedFimReal = toLocalDateTimeLocal(new Date());
+                } else if (num > 0 && prev.status === ActivityStatus.Open) {
+                    updatedStatus = ActivityStatus.EmProgresso;
+                    if (!updatedInicioReal) updatedInicioReal = toLocalDateTimeLocal(new Date());
+                } else if (num === 0 && prev.status === ActivityStatus.Closed) {
+                    updatedStatus = ActivityStatus.Open;
+                }
+
+                return {
+                    ...prev,
+                    progresso: num,
+                    status: updatedStatus,
+                    horaInicioReal: updatedInicioReal,
+                    horaFimReal: updatedFimReal
+                };
+            });
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
@@ -220,12 +269,15 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        const isClosed = formData.status === ActivityStatus.Closed;
+        const finalProgress = isClosed ? 100 : (formData.progresso !== undefined ? Number(formData.progresso) : 0);
         const submissionData = {
             ...formData,
+            progresso: finalProgress,
             horaInicio: new Date(formData.horaInicio).toISOString(),
             horaFim: new Date(formData.horaFim).toISOString(),
             horaInicioReal: formData.horaInicioReal ? new Date(formData.horaInicioReal).toISOString() : undefined,
-            horaFimReal: formData.horaFimReal ? new Date(formData.horaFimReal).toISOString() : undefined,
+            horaFimReal: formData.horaFimReal ? new Date(formData.horaFimReal).toISOString() : (isClosed ? new Date().toISOString() : undefined),
         };
 
         const limitDate = recurrenceLimit ? new Date(recurrenceLimit) : undefined;
@@ -280,7 +332,19 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label className="block text-sm font-medium">Empresa</label>
+                    <input 
+                        type="text" 
+                        name="empresa" 
+                        value={formData.empresa || 'FOSPAR'} 
+                        onChange={handleChange} 
+                        className={inputClasses} 
+                        placeholder="FOSPAR, Contratada..."
+                        disabled={isOperator} 
+                    />
+                </div>
                 <div>
                     <label className="block text-sm font-medium">Área</label>
                     <input type="text" name="area" value={formData.area} onChange={handleChange} className={inputClasses} disabled={isOperator} />
@@ -338,24 +402,104 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                 </div>
             </div>
 
-            {/* Status & Recurrence */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-sm font-medium">Status</label>
-                    <select name="status" value={formData.status} onChange={handleChange} className={inputClasses}>
-                        {Object.values(ActivityStatus).map(s => (
-                            <option key={s} value={s}>{getStatusLabel(s, customStatusLabels)}</option>
-                        ))}
-                    </select>
+            {/* Progress and Status Box */}
+            <div className="bg-emerald-50/60 dark:bg-emerald-950/20 p-3.5 rounded-lg border border-emerald-200 dark:border-emerald-800/60 space-y-3">
+                <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-emerald-700 dark:text-emerald-300 uppercase">
+                        Avanço Físico e Status
+                    </h4>
+                    <span className="text-xs font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded">
+                        {formData.progresso !== undefined ? formData.progresso : 0}% Avançado
+                    </span>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium">Recorrência</label>
-                    <select name="periodicidade" value={formData.periodicidade} onChange={handleChange} className={inputClasses} disabled={disableDates}>
-                        {Object.values(Recorrencia).map(r => (
-                            <option key={r} value={r}>{r}</option>
-                        ))}
-                    </select>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* % Progress Field */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">
+                            % Avanço da Atividade
+                        </label>
+                        <div className="flex items-center space-x-3">
+                            <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="5"
+                                name="progresso"
+                                value={formData.progresso !== undefined ? formData.progresso : 0}
+                                onChange={handleChange}
+                                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                            />
+                            <div className="flex items-center space-x-1 flex-shrink-0">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    name="progresso"
+                                    value={formData.progresso !== undefined ? formData.progresso : 0}
+                                    onChange={handleChange}
+                                    className="w-16 p-1.5 text-center text-sm font-bold border rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
+                                />
+                                <span className="font-bold text-sm">%</span>
+                            </div>
+                        </div>
+                        {/* Quick % buttons */}
+                        <div className="flex items-center space-x-1.5 mt-2">
+                            {[0, 25, 50, 75, 100].map((pct) => (
+                                <button
+                                    key={pct}
+                                    type="button"
+                                    onClick={() => {
+                                        handleChange({
+                                            target: { name: 'progresso', value: String(pct), type: 'number' }
+                                        } as any);
+                                    }}
+                                    className={`px-2 py-0.5 text-xs font-semibold rounded transition-all ${
+                                        formData.progresso === pct
+                                            ? 'bg-emerald-600 text-white shadow-xs'
+                                            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    {pct}%
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                            Definir 100% ou alterar o status para "Concluído" considera automaticamente 100% de avanço.
+                        </p>
+                    </div>
+
+                    {/* Status Select */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">
+                            Status
+                        </label>
+                        <select name="status" value={formData.status} onChange={handleChange} className={inputClasses}>
+                            {Object.values(ActivityStatus).map(s => (
+                                <option key={s} value={s}>{getStatusLabel(s, customStatusLabels)}</option>
+                            ))}
+                        </select>
+                        <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                            {formData.status === ActivityStatus.Closed ? (
+                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                    ✓ Atividade marcada como concluída (100% de avanço registrado).
+                                </span>
+                            ) : (
+                                <span>Status operacional atual da tarefa.</span>
+                            )}
+                        </div>
+                    </div>
                 </div>
+            </div>
+
+            {/* Recurrence */}
+            <div>
+                <label className="block text-sm font-medium">Recorrência</label>
+                <select name="periodicidade" value={formData.periodicidade} onChange={handleChange} className={inputClasses} disabled={disableDates}>
+                    {Object.values(Recorrencia).map(r => (
+                        <option key={r} value={r}>{r}</option>
+                    ))}
+                </select>
             </div>
 
             {/* Recurrence End Date */}

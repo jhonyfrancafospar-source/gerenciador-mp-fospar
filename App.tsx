@@ -10,6 +10,7 @@ import { ReportView } from './components/ReportView';
 import { AuditLogView } from './components/AuditLogView';
 import { ManPowerView } from './components/ManPowerView';
 import { ActivityCalendarView } from './components/ActivityCalendarView';
+import { SCurveView } from './components/SCurveView';
 import { Modal } from './components/Modal';
 import { ActivityForm } from './components/ActivityForm';
 import { LoginView } from './components/LoginView';
@@ -552,13 +553,27 @@ const App: React.FC = () => {
         setEditingActivity(null);
     };
     
-    // STRICT: This function MUST NOT change dates. Only Status.
     const handleUpdateStatus = async (activityId: string, status: ActivityStatus) => {
         const activity = activities.find(a => a.id === activityId);
         if (activity) {
-            // We strictly only update the status field.
-            // Dates are preserved exactly as they were (imported or manually set).
-            const updatedActivity = { ...activity, status };
+            let updatedProgress = activity.progresso;
+            let updatedFimReal = activity.horaFimReal;
+            
+            if (status === ActivityStatus.Closed) {
+                updatedProgress = 100;
+                if (!updatedFimReal) {
+                    updatedFimReal = new Date().toISOString();
+                }
+            } else if (status === ActivityStatus.Open && activity.progresso === 100) {
+                updatedProgress = 0;
+            }
+
+            const updatedActivity: Activity = { 
+                ...activity, 
+                status,
+                progresso: updatedProgress,
+                horaFimReal: updatedFimReal
+            };
             
             setActivities(prev => prev.map(act => act.id === activityId ? updatedActivity : act));
             await saveActivityToSupabase(updatedActivity);
@@ -791,6 +806,35 @@ const App: React.FC = () => {
                 rawResp = String(rawResp).split(mapping.responsavelSeparator).map(s => s.trim()).join(' / ');
             }
 
+            // 5. Handle Progresso & Real Times
+            let importedProgresso = 0;
+            if (mapping.progresso && row[mapping.progresso] !== undefined && row[mapping.progresso] !== null && row[mapping.progresso] !== '') {
+                const val = Number(row[mapping.progresso]);
+                if (!isNaN(val)) {
+                    importedProgresso = val <= 1 && val > 0 ? Math.round(val * 100) : Math.min(100, Math.max(0, Math.round(val)));
+                }
+            }
+
+            let importedInicioReal: string | undefined = undefined;
+            if (mapping.horaInicioReal && row[mapping.horaInicioReal]) {
+                try {
+                    importedInicioReal = createISOString(row[mapping.horaInicioReal], refDate);
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            let importedFimReal: string | undefined = undefined;
+            if (mapping.horaFimReal && row[mapping.horaFimReal]) {
+                try {
+                    importedFimReal = createISOString(row[mapping.horaFimReal], refDate);
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            const initialStatus = importedProgresso === 100 ? ActivityStatus.Closed : ActivityStatus.Open;
+
             return {
                 id: `imported_${batchId}_${index}`,
                 idMp: mapping.idMp ? (row[mapping.idMp] || '') : '',
@@ -806,11 +850,14 @@ const App: React.FC = () => {
                 jornada: '',
                 horaInicio: startISO,
                 horaFim: endISO,
+                horaInicioReal: importedInicioReal,
+                horaFimReal: importedFimReal,
                 duracao: duracao,
+                progresso: importedProgresso,
                 "r eletrico": false,
                 labapet: false,
                 criticidade: mapping.criticidade ? (row[mapping.criticidade] as Criticidade || Criticidade.Normal) : Criticidade.Normal,
-                status: ActivityStatus.Open,
+                status: initialStatus,
                 periodicidade: Recorrencia.NaoHa,
                 beforeImage: [],
                 afterImage: [],
@@ -939,6 +986,7 @@ const App: React.FC = () => {
             case 'board': return <ActivityBoardView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'calendar': return <ActivityCalendarView activities={filteredAndSortedActivities} onEdit={openEditModal} customStatusLabels={statusLabels} onDateChange={handleActivityDateChange} userRole={user?.role} />;
             case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateActivity={handleUpdateActivity} />;
+            case 'scurve': return <SCurveView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onUpdateActivity={handleUpdateActivity} customStatusLabels={statusLabels} />;
             case 'report': return <ReportView activities={filteredAndSortedActivities} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'audit': return <AuditLogView logs={auditLogs} />;
             case 'manpower': return <ManPowerView activities={filteredAndSortedActivities} />;

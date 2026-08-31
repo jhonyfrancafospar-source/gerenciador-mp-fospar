@@ -1,5 +1,5 @@
 
-export type ViewType = 'dashboard' | 'list' | 'board' | 'gantt' | 'report' | 'audit' | 'manpower' | 'calendar';
+export type ViewType = 'dashboard' | 'list' | 'board' | 'gantt' | 'report' | 'audit' | 'manpower' | 'calendar' | 'scurve';
 
 export type FilterType = {
     empresa?: string;
@@ -94,6 +94,7 @@ export interface Activity {
     horaInicioReal?: string; // ISO 8601 format
     horaFimReal?: string; // ISO 8601 format
     duracao: string; // e.g., "0:10"
+    progresso?: number; // 0 to 100 (% de avanço físico)
     "r eletrico": boolean;
     labapet: boolean;
     criticidade: Criticidade;
@@ -119,7 +120,10 @@ export interface ImportMapping {
     dateFormat?: string; // Format of the date column (e.g. DD/MM/AAAA)
     horaInicio: string;
     horaFim: string;
+    horaInicioReal?: string;
+    horaFimReal?: string;
     duracao: string; // Explicit duration mapping
+    progresso?: string; // Progress column mapping
     criticidade: string;
 }
 

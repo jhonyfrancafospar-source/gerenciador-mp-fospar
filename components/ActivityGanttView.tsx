@@ -117,11 +117,11 @@ const GanttBar: React.FC<GanttBarProps> = ({
         }
     }, [activity.horaInicio, activity.horaFim, isDragging]);
 
-    const handleStartDrag = (e: React.MouseEvent, type: 'move' | 'resize-left' | 'resize-right') => {
-        e.preventDefault();
+    const handleStartDrag = (e: React.MouseEvent | React.TouchEvent, type: 'move' | 'resize-left' | 'resize-right') => {
         e.stopPropagation();
 
-        const initialMouseX = e.clientX;
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+        const initialMouseX = clientX;
         const initialScrollLeft = scrollContainerRef.current?.scrollLeft || 0;
         const origStart = new Date(activity.horaInicio).getTime();
         const origEnd = new Date(activity.horaFim).getTime();
@@ -129,11 +129,14 @@ const GanttBar: React.FC<GanttBarProps> = ({
 
         let hasMoved = false;
 
-        const handleMouseMove = (moveEv: MouseEvent) => {
-            const currentScrollLeft = scrollContainerRef.current?.scrollLeft || 0;
-            const deltaX = (moveEv.clientX + currentScrollLeft) - (initialMouseX + initialScrollLeft);
+        document.body.style.cursor = type === 'move' ? 'grabbing' : 'ew-resize';
+        document.body.style.userSelect = 'none';
 
-            if (!hasMoved && Math.abs(moveEv.clientX - initialMouseX) > 3) {
+        const updatePosition = (currentClientX: number) => {
+            const currentScrollLeft = scrollContainerRef.current?.scrollLeft || 0;
+            const deltaX = (currentClientX + currentScrollLeft) - (initialMouseX + initialScrollLeft);
+
+            if (!hasMoved && Math.abs(deltaX) > 3) {
                 hasMoved = true;
                 setIsDragging(true);
                 setDragType(type);
@@ -170,17 +173,32 @@ const GanttBar: React.FC<GanttBarProps> = ({
             // Auto-scroll when near horizontal edges
             if (scrollContainerRef.current) {
                 const rect = scrollContainerRef.current.getBoundingClientRect();
-                if (moveEv.clientX > rect.right - 80) {
+                if (currentClientX > rect.right - 80) {
                     scrollContainerRef.current.scrollLeft += 20;
-                } else if (moveEv.clientX < rect.left + 180) {
+                } else if (currentClientX < rect.left + 180) {
                     scrollContainerRef.current.scrollLeft -= 20;
                 }
             }
         };
 
-        const handleMouseUp = () => {
+        const handleMouseMove = (moveEv: MouseEvent) => {
+            moveEv.preventDefault();
+            updatePosition(moveEv.clientX);
+        };
+
+        const handleTouchMove = (touchEv: TouchEvent) => {
+            if (touchEv.touches.length > 0) {
+                updatePosition(touchEv.touches[0].clientX);
+            }
+        };
+
+        const finishDrag = () => {
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('touchmove', handleTouchMove);
+            window.removeEventListener('touchend', handleTouchEnd);
 
             if (hasMoved) {
                 setIsDragging(false);
@@ -190,13 +208,24 @@ const GanttBar: React.FC<GanttBarProps> = ({
                 const finalEnd = tempEndRef.current;
 
                 if (finalStart !== origStart || finalEnd !== origEnd) {
-                    const durationHours = ((finalEnd - finalStart) / 3600000).toFixed(1);
+                    const totalMins = Math.round((finalEnd - finalStart) / 60000);
+                    const h = Math.floor(totalMins / 60);
+                    const m = totalMins % 60;
+                    const duracaoStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+
+                    // Derive shift for new start date/time
+                    const startDate = new Date(finalStart);
+                    const startHour = startDate.getHours();
+                    const shiftKey = (startHour >= 0 && startHour < 8) ? '00-08' : (startHour >= 8 && startHour < 16) ? '08-16' : '16-00';
+                    const newShift = getShiftInfo(startDate, shiftKey).letter;
+
                     if (onUpdateActivity) {
                         onUpdateActivity({
                             ...activity,
                             horaInicio: new Date(finalStart).toISOString(),
                             horaFim: new Date(finalEnd).toISOString(),
-                            duracao: `${durationHours}h`
+                            duracao: duracaoStr,
+                            turno: activity.turno === 'ADM' ? 'ADM' : (newShift as any)
                         });
                     }
                 }
@@ -205,8 +234,13 @@ const GanttBar: React.FC<GanttBarProps> = ({
             }
         };
 
-        window.addEventListener('mousemove', handleMouseMove);
+        const handleMouseUp = () => finishDrag();
+        const handleTouchEnd = () => finishDrag();
+
+        window.addEventListener('mousemove', handleMouseMove, { passive: false });
         window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('touchmove', handleTouchMove, { passive: true });
+        window.addEventListener('touchend', handleTouchEnd);
     };
 
     const displayStartMs = isDragging ? tempStartMs : actStartMs;
@@ -217,13 +251,14 @@ const GanttBar: React.FC<GanttBarProps> = ({
     const durationMs = displayEndMs - displayStartMs;
 
     const left = diffMs * pxPerMs;
-    const width = Math.max(durationMs * pxPerMs, 6);
+    const width = Math.max(durationMs * pxPerMs, 8);
 
     const barColor = STATUS_COLORS[activity.status] || 'bg-gray-500';
+    const progressPercent = activity.status === ActivityStatus.Closed ? 100 : (activity.progresso !== undefined ? Number(activity.progresso) : 0);
 
     return (
         <div 
-            className={`absolute top-1/2 -translate-y-1/2 rounded-md flex items-center px-2 text-[10px] font-medium text-white shadow-sm ${barColor} select-none group transition-shadow ${
+            className={`absolute top-1/2 -translate-y-1/2 rounded-md flex items-center text-[10px] font-medium text-white shadow-sm ${barColor} select-none group transition-shadow ${
                 isDragging ? 'ring-2 ring-blue-400 z-50 cursor-grabbing shadow-2xl opacity-95 scale-[1.01]' : 'cursor-grab hover:ring-1 hover:ring-white hover:z-20 opacity-90 hover:opacity-100'
             }`}
             style={{ 
@@ -232,34 +267,66 @@ const GanttBar: React.FC<GanttBarProps> = ({
                 height: `${height * 0.72}px`,
             }}
             onMouseDown={(e) => handleStartDrag(e, 'move')}
-            title={!isDragging ? `${activity.tag} - ${activity.descricao}\n${new Date(activity.horaInicio).toLocaleString()} - ${new Date(activity.horaFim).toLocaleString()}\n(Clique e arraste para realocar dia/horário)` : undefined}
+            onTouchStart={(e) => handleStartDrag(e, 'move')}
+            title={!isDragging ? `${activity.tag} - ${activity.descricao}\n${new Date(activity.horaInicio).toLocaleString()} - ${new Date(activity.horaFim).toLocaleString()}\nAvanço: ${progressPercent}%\n(Clique e arraste para realocar dia/horário)` : undefined}
         >
+            {/* Progress Fill Underlay */}
+            {progressPercent > 0 && (
+                <div 
+                    className="absolute left-0 top-0 bottom-0 bg-white/25 dark:bg-white/30 rounded-l-md pointer-events-none transition-all"
+                    style={{ width: `${progressPercent}%` }}
+                />
+            )}
+
             {/* Left Resize Handle */}
             <div 
                 onMouseDown={(e) => handleStartDrag(e, 'resize-left')}
-                className="absolute left-0 top-0 bottom-0 w-2.5 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40 rounded-l-md flex items-center justify-center transition-opacity z-10"
+                onTouchStart={(e) => handleStartDrag(e, 'resize-left')}
+                className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40 rounded-l-md flex items-center justify-center transition-opacity z-10"
                 title="Arrastar para alterar horário de início"
             >
-                <div className="w-[2px] h-3 bg-white/90 rounded-full" />
+                <div className="w-[2px] h-3.5 bg-white/90 rounded-full" />
             </div>
 
             {/* Label */}
-            {width > 35 && <span className="truncate pointer-events-none px-1 font-semibold">{activity.descricao}</span>}
+            {width > 35 && (
+                <span className="truncate pointer-events-none px-2 font-semibold z-10 flex items-center gap-1">
+                    <span>{activity.descricao}</span>
+                    {progressPercent > 0 && (
+                        <span className="text-[9px] opacity-90 font-mono">({progressPercent}%)</span>
+                    )}
+                </span>
+            )}
 
             {/* Right Resize Handle */}
             <div 
                 onMouseDown={(e) => handleStartDrag(e, 'resize-right')}
-                className="absolute right-0 top-0 bottom-0 w-2.5 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40 rounded-r-md flex items-center justify-center transition-opacity z-10"
+                onTouchStart={(e) => handleStartDrag(e, 'resize-right')}
+                className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40 rounded-r-md flex items-center justify-center transition-opacity z-10"
                 title="Arrastar para alterar horário de fim"
             >
-                <div className="w-[2px] h-3 bg-white/90 rounded-full" />
+                <div className="w-[2px] h-3.5 bg-white/90 rounded-full" />
             </div>
 
             {/* Live Dragging Floating Tooltip */}
             {isDragging && (
-                <div className="absolute -top-11 left-1/2 -translate-x-1/2 bg-gray-900/95 text-white dark:bg-gray-100/95 dark:text-gray-900 text-[11px] font-extrabold py-1 px-3 rounded-lg shadow-2xl whitespace-nowrap z-50 pointer-events-none flex items-center gap-2 border border-blue-500/50 backdrop-blur-md">
+                <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-gray-900/95 text-white dark:bg-gray-100/95 dark:text-gray-900 text-[11px] font-extrabold py-1.5 px-3 rounded-lg shadow-2xl whitespace-nowrap z-50 pointer-events-none flex items-center gap-2 border border-blue-500/50 backdrop-blur-md">
                     <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span>
                     <span>{formatDateRange(displayStartMs, displayEndMs)}</span>
+                    <span className="text-[10px] opacity-80 font-normal">
+                        ({Math.floor(durationMs / 3600000)}h {Math.round((durationMs % 3600000) / 60000)}m)
+                    </span>
+                    {(() => {
+                        const sDate = new Date(displayStartMs);
+                        const sHour = sDate.getHours();
+                        const sKey = (sHour >= 0 && sHour < 8) ? '00-08' : (sHour >= 8 && sHour < 16) ? '08-16' : '16-00';
+                        const sInfo = getShiftInfo(sDate, sKey);
+                        return (
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${sInfo.bg} ${sInfo.text}`}>
+                                Turno {sInfo.letter}
+                            </span>
+                        );
+                    })()}
                 </div>
             )}
         </div>

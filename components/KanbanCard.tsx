@@ -77,12 +77,35 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ activity, onEdit, onDele
                 </div>
                 
                 <div className="flex items-center justify-between">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${getCriticidadeClasses(activity.criticidade)}`}>
-                        {activity.criticidade}
-                    </span>
+                    <div className="flex items-center space-x-1">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${getCriticidadeClasses(activity.criticidade)}`}>
+                            {activity.criticidade}
+                        </span>
+                        {activity.empresa && (
+                            <span className="text-[10px] bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 px-1.5 py-0.5 rounded font-medium truncate max-w-[80px]" title={activity.empresa}>
+                                {activity.empresa}
+                            </span>
+                        )}
+                    </div>
                      <span className="text-[10px] bg-gray-200/80 dark:bg-gray-600/80 px-2 py-0.5 rounded text-gray-600 dark:text-gray-300 font-mono">
                         {activity.tag}
                     </span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="space-y-1 pt-1">
+                    <div className="flex justify-between items-center text-[10px]">
+                        <span className="text-gray-500 dark:text-gray-400 font-medium">Avanço Físico</span>
+                        <span className={`font-bold ${activity.status === 'CLOSED' ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary-600 dark:text-primary-400'}`}>
+                            {activity.status === 'CLOSED' ? 100 : (activity.progresso || 0)}%
+                        </span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                        <div
+                            className={`h-1.5 rounded-full transition-all ${activity.status === 'CLOSED' ? 'bg-emerald-500' : 'bg-primary-500'}`}
+                            style={{ width: `${activity.status === 'CLOSED' ? 100 : (activity.progresso || 0)}%` }}
+                        />
+                    </div>
                 </div>
 
                 <div className="text-xs text-gray-600 dark:text-gray-300 space-y-2 pt-1 border-t border-gray-200/50 dark:border-gray-600/50 mt-2">
