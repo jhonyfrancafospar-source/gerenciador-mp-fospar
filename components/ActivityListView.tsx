@@ -9,7 +9,9 @@ import { TrashIcon } from './icons/TrashIcon';
 import { ViewColumnsIcon } from './icons/ViewColumnsIcon';
 import { XMarkIcon } from './icons/XMarkIcon';
 import { SearchIcon } from './icons/SearchIcon';
+import { LinkIcon } from './icons/LinkIcon';
 import { getStatusClasses, getCriticidadeClasses, getStatusLabel } from '../utils/styleUtils';
+import { getPredecessors, getSuccessors, analyzeDependencies, getActivitySequenceMap } from '../utils/dependencyUtils';
 
 interface ActivityListViewProps {
     activities: Activity[];
@@ -17,6 +19,7 @@ interface ActivityListViewProps {
     onUpdateStatus: (activityId: string, status: ActivityStatus) => void;
     onDelete?: (activityId: string) => void;
     customStatusLabels?: Record<string, string>;
+    onRecalculateSchedule?: (targetMpId?: string) => void;
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -40,6 +43,7 @@ export interface ColumnDefinition {
 
 export const ALL_COLUMNS: ColumnDefinition[] = [
     // Identificação
+    { id: 'seq', label: '#', description: 'Número sequencial numérico na MP/Cronograma', category: 'identificacao', defaultWidth: 50, defaultVisible: true, align: 'center' },
     { id: 'idMp', label: 'ID MP', description: 'Código ou Ordem de Manutenção', category: 'identificacao', defaultWidth: 90, sortKey: 'idMp', defaultVisible: true },
     { id: 'tag', label: 'TAG', description: 'Identificação do equipamento', category: 'identificacao', defaultWidth: 90, sortKey: 'tag', defaultVisible: true },
     { id: 'descricao', label: 'Descrição', description: 'Descrição da tarefa', category: 'identificacao', defaultWidth: 260, sortKey: 'descricao', defaultVisible: true },
@@ -55,6 +59,8 @@ export const ALL_COLUMNS: ColumnDefinition[] = [
     { id: 'data', label: 'Data', description: 'Data planejada de início', category: 'planejamento', defaultWidth: 90, sortKey: 'horaInicio', defaultVisible: true, align: 'center' },
     { id: 'horario', label: 'Horário Plan.', description: 'Horário planejado (Início - Fim)', category: 'planejamento', defaultWidth: 110, sortKey: 'horaInicio', defaultVisible: true },
     { id: 'duracao', label: 'Duração', description: 'Duração estimada da atividade', category: 'planejamento', defaultWidth: 70, sortKey: 'duracao', defaultVisible: true, align: 'center' },
+    { id: 'predecessoras', label: 'Predecessoras', description: 'Atividades vinculadas anteriores', category: 'planejamento', defaultWidth: 150, defaultVisible: true },
+    { id: 'sucessoras', label: 'Sucessoras', description: 'Atividades vinculadas subsequentes', category: 'planejamento', defaultWidth: 150, defaultVisible: false },
     { id: 'criticidade', label: 'Criticidade', description: 'Nível de criticidade ou prioridade', category: 'planejamento', defaultWidth: 90, sortKey: 'criticidade', defaultVisible: true },
     
     // Execução & Progresso
@@ -80,7 +86,14 @@ const CATEGORY_LABELS: Record<string, string> = {
 const STORAGE_KEY = 'fospar_visible_columns_v2';
 const WIDTHS_STORAGE_KEY = 'fospar_column_widths_v2';
 
-export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, onEdit, onUpdateStatus, onDelete, customStatusLabels = {} }) => {
+export const ActivityListView: React.FC<ActivityListViewProps> = ({ 
+    activities, 
+    onEdit, 
+    onUpdateStatus, 
+    onDelete, 
+    customStatusLabels = {},
+    onRecalculateSchedule
+}) => {
     // Sorting State
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: null, direction: 'asc' });
     
@@ -124,6 +137,9 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
     const [columnSearch, setColumnSearch] = useState('');
     const columnPickerRef = useRef<HTMLDivElement>(null);
     const columnButtonRef = useRef<HTMLButtonElement>(null);
+
+    // Compute sequence numbers for all activities
+    const sequenceMap = useMemo(() => getActivitySequenceMap(activities), [activities]);
 
     // Save column visibility changes
     const toggleColumn = (colId: string) => {
@@ -247,6 +263,13 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                 return sortConfig.direction === 'asc' ? aProg - bProg : bProg - aProg;
             }
 
+            // Handle Seq sorting
+            if (sortConfig.key === 'seq' as any) {
+                const aSeq = sequenceMap.get(a.id) || 0;
+                const bSeq = sequenceMap.get(b.id) || 0;
+                return sortConfig.direction === 'asc' ? aSeq - bSeq : bSeq - aSeq;
+            }
+
             // Handle Strings
             if (typeof aValue === 'string' && typeof bValue === 'string') {
                 return sortConfig.direction === 'asc'
@@ -352,21 +375,33 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                     Exibindo <span className="font-bold text-gray-700 dark:text-gray-200">{sortedActivities.length}</span> atividade(s) • <span className="font-bold text-primary-600 dark:text-primary-400">{totalVisibleCount}</span> coluna(s) ativa(s)
                 </div>
 
-                <div className="relative">
-                    <button
-                        ref={columnButtonRef}
-                        type="button"
-                        onClick={() => setIsColumnPickerOpen(prev => !prev)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all shadow-sm ${
-                            isColumnPickerOpen
-                                ? 'bg-primary-50 border-primary-400 text-primary-700 dark:bg-primary-950/60 dark:border-primary-600 dark:text-primary-300 ring-2 ring-primary-500/20'
-                                : 'bg-white/80 dark:bg-gray-800/80 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
-                        }`}
-                        title="Configurar quais colunas exibir ou ocultar na tabela"
-                    >
-                        <ViewColumnsIcon className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                        <span>Colunas ({totalVisibleCount}/{ALL_COLUMNS.length})</span>
-                    </button>
+                <div className="flex items-center gap-2">
+                    {onRecalculateSchedule && (
+                        <button
+                            type="button"
+                            onClick={() => onRecalculateSchedule()}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all shadow-sm"
+                            title="Recalcular e ajustar automaticamente datas e horários de atividades com predecessoras e sucessoras respeitando suas durações"
+                        >
+                            <span>⚡ Auto-Ajustar Vínculos</span>
+                        </button>
+                    )}
+
+                    <div className="relative">
+                        <button
+                            ref={columnButtonRef}
+                            type="button"
+                            onClick={() => setIsColumnPickerOpen(prev => !prev)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all shadow-sm ${
+                                isColumnPickerOpen
+                                    ? 'bg-primary-50 border-primary-400 text-primary-700 dark:bg-primary-950/60 dark:border-primary-600 dark:text-primary-300 ring-2 ring-primary-500/20'
+                                    : 'bg-white/80 dark:bg-gray-800/80 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
+                            }`}
+                            title="Configurar quais colunas exibir ou ocultar na tabela"
+                        >
+                            <ViewColumnsIcon className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                            <span>Colunas ({totalVisibleCount}/{ALL_COLUMNS.length})</span>
+                        </button>
 
                     {/* Column Manager Dropdown Popover */}
                     {isColumnPickerOpen && (
@@ -479,6 +514,7 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                             </div>
                         </div>
                     )}
+                    </div>
                 </div>
             </div>
 
@@ -491,6 +527,7 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                 <table className="w-full text-xs text-left text-gray-500 dark:text-gray-400 table-fixed">
                     <thead className="text-xs text-gray-700 uppercase bg-gray-50/50 dark:bg-gray-700/50 dark:text-gray-300">
                         <tr>
+                            {visibleColumns.seq && <Th id="seq" label="#" className="text-center" sortKey={'seq' as any} />}
                             {visibleColumns.idMp && <Th id="idMp" label="ID MP" sortKey="idMp" />}
                             {visibleColumns.tag && <Th id="tag" label="TAG" sortKey="tag" />}
                             {visibleColumns.descricao && <Th id="descricao" label="Descrição" sortKey="descricao" />}
@@ -504,6 +541,8 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                             {visibleColumns.horaInicioReal && <Th id="horaInicioReal" label="Início Real" sortKey="horaInicioReal" />}
                             {visibleColumns.horaFimReal && <Th id="horaFimReal" label="Fim Real" sortKey="horaFimReal" />}
                             {visibleColumns.duracao && <Th id="duracao" label="Duração" sortKey="duracao" />}
+                            {visibleColumns.predecessoras && <Th id="predecessoras" label="Predecessoras" />}
+                            {visibleColumns.sucessoras && <Th id="sucessoras" label="Sucessoras" />}
                             {visibleColumns.criticidade && <Th id="criticidade" label="Criticidade" sortKey="criticidade" />}
                             {visibleColumns.progresso && <Th id="progresso" label="% Avanço" sortKey="progresso" />}
                             {visibleColumns.status && <Th id="status" label="Status" sortKey="statusLabel" />}
@@ -513,12 +552,26 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100/50 dark:divide-gray-700/50">
-                        {sortedActivities.map(activity => {
+                        {sortedActivities.map((activity, index) => {
                             // Conditional Formatting Logic: Open AND Start Time < Now
                             const isOverdue = activity.status === ActivityStatus.Open && new Date(activity.horaInicio) < now;
+                            const seqNum = sequenceMap.get(activity.id) || (index + 1);
                             
                             return (
                                 <tr key={activity.id} className="bg-transparent hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-colors">
+                                    {/* Nº Sequencial */}
+                                    {visibleColumns.seq && (
+                                        <td 
+                                            className="px-2 py-1.5 text-center font-mono font-bold text-[11px] text-indigo-700 dark:text-indigo-300 bg-indigo-50/40 dark:bg-indigo-950/20 cursor-pointer hover:bg-indigo-100/60 dark:hover:bg-indigo-900/40"
+                                            onClick={() => onEdit(activity)}
+                                            title={`Item #${seqNum} na MP (${activity.idMp || 'Geral'})`}
+                                        >
+                                            <span className="inline-flex items-center justify-center min-w-[22px] px-1 py-0.5 rounded font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200">
+                                                #{seqNum}
+                                            </span>
+                                        </td>
+                                    )}
+
                                     {/* ID MP */}
                                     {visibleColumns.idMp && (
                                         <td 
@@ -629,6 +682,92 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({ activities, 
                                     {visibleColumns.duracao && (
                                         <td className="px-3 py-1.5 truncate overflow-hidden text-center">
                                             {activity.duracao}
+                                        </td>
+                                    )}
+
+                                    {/* Predecessoras */}
+                                    {visibleColumns.predecessoras && (
+                                        <td className="px-3 py-1.5 overflow-hidden">
+                                            {(() => {
+                                                const preds = getPredecessors(activity, activities);
+                                                if (preds.length === 0) return <span className="text-gray-400 text-[11px]">-</span>;
+
+                                                const analysis = analyzeDependencies(activity, activities);
+                                                const hasConflict = analysis.conflicts.length > 0;
+
+                                                return (
+                                                    <div className="flex flex-wrap items-center gap-1">
+                                                        {preds.slice(0, 3).map(p => {
+                                                            const pSeq = sequenceMap.get(p.id);
+                                                            return (
+                                                                <span
+                                                                    key={p.id}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        onEdit(p);
+                                                                    }}
+                                                                    className={`inline-flex items-center text-[10px] font-mono px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                                                                        p.status === ActivityStatus.Closed
+                                                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 hover:bg-emerald-200'
+                                                                            : hasConflict
+                                                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 hover:bg-amber-200'
+                                                                            : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 hover:bg-indigo-200'
+                                                                    }`}
+                                                                    title={`Predecessora #${pSeq || ''}: ${p.tag} (${p.descricao}) - Status: ${getStatusLabel(p.status, customStatusLabels)}`}
+                                                                >
+                                                                    ⬅️ {pSeq ? `#${pSeq} ` : ''}{p.tag}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                        {preds.length > 3 && (
+                                                            <span className="text-[10px] text-gray-500 font-medium">
+                                                                +{preds.length - 3}
+                                                            </span>
+                                                        )}
+                                                        {hasConflict && (
+                                                            <span title={analysis.conflicts[0].message} className="text-amber-500 text-xs">
+                                                                ⚠️
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+                                        </td>
+                                    )}
+
+                                    {/* Sucessoras */}
+                                    {visibleColumns.sucessoras && (
+                                        <td className="px-3 py-1.5 overflow-hidden">
+                                            {(() => {
+                                                const succs = getSuccessors(activity, activities);
+                                                if (succs.length === 0) return <span className="text-gray-400 text-[11px]">-</span>;
+
+                                                return (
+                                                    <div className="flex flex-wrap items-center gap-1">
+                                                        {succs.slice(0, 3).map(s => {
+                                                            const sSeq = sequenceMap.get(s.id);
+                                                            return (
+                                                                <span
+                                                                    key={s.id}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        onEdit(s);
+                                                                    }}
+                                                                    className="inline-flex items-center text-[10px] font-mono px-1.5 py-0.5 rounded cursor-pointer transition-colors bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 hover:bg-blue-200"
+                                                                    title={`Sucessora #${sSeq || ''}: ${s.tag} (${s.descricao}) - Início: ${new Date(s.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                                                                >
+                                                                    ➡️ {sSeq ? `#${sSeq} ` : ''}{s.tag}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                        {succs.length > 3 && (
+                                                            <span className="text-[10px] text-gray-500 font-medium">
+                                                                +{succs.length - 3}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
                                         </td>
                                     )}
 

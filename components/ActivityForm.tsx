@@ -1,12 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Activity, Attachment } from '../types';
 import { ActivityStatus, Criticidade, Recorrencia } from '../types';
 import { XMarkIcon } from './icons/XMarkIcon';
 import { TrashIcon } from './icons/TrashIcon';
-import { getStatusLabel } from '../utils/styleUtils';
+import { LinkIcon } from './icons/LinkIcon';
+import { getStatusLabel, getStatusClasses } from '../utils/styleUtils';
+import { 
+    analyzeDependencies, 
+    alignScheduleAfterPredecessors, 
+    cleanDependencyIds, 
+    getActivitySequenceMap,
+    parseDurationToMs,
+    formatMsToDuration,
+    calculateShiftForDate
+} from '../utils/dependencyUtils';
 
 interface ActivityFormProps {
     activity?: Activity | null;
+    allActivities?: Activity[];
     onSubmit: (activity: Omit<Activity, 'id'> | Activity, recurrenceLimit?: Date) => void;
     onClose: () => void;
     customStatusLabels?: Record<string, string>;
@@ -52,6 +63,8 @@ const initialFormState = (): Omit<Activity, 'id'> => ({
     horaFimReal: '',
     duracao: '01:00',
     progresso: 0,
+    predecessoras: [],
+    sucessoras: [],
     "r eletrico": false,
     labapet: false,
     criticidade: Criticidade.Normal,
@@ -62,10 +75,17 @@ const initialFormState = (): Omit<Activity, 'id'> => ({
     observacoes: ''
 });
 
-export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, onClose, customStatusLabels = {}, onUpload, userRole }) => {
+export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivities = [], onSubmit, onClose, customStatusLabels = {}, onUpload, userRole }) => {
     const [formData, setFormData] = useState<Omit<Activity, 'id'>>(initialFormState());
     const [recurrenceLimit, setRecurrenceLimit] = useState<string>('');
     const [uploading, setUploading] = useState(false);
+    
+    // Dependency selectors state
+    const [predecessorSearch, setPredecessorSearch] = useState('');
+    const [isPredecessorDropdownOpen, setIsPredecessorDropdownOpen] = useState(false);
+    const [successorSearch, setSuccessorSearch] = useState('');
+    const [isSuccessorDropdownOpen, setIsSuccessorDropdownOpen] = useState(false);
+
     const isOperator = userRole === 'operator';
     const isNormalUser = userRole === 'user';
     const disableDates = isOperator || isNormalUser;
@@ -84,6 +104,8 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                 horaInicioReal: activity.horaInicioReal ? toLocalDateTimeLocal(activity.horaInicioReal) : '',
                 horaFimReal: activity.horaFimReal ? toLocalDateTimeLocal(activity.horaFimReal) : '',
                 turno: activity.turno || '',
+                predecessoras: activity.predecessoras || [],
+                sucessoras: activity.sucessoras || [],
                 beforeImage: Array.isArray(activity.beforeImage) ? activity.beforeImage : (activity.beforeImage ? [activity.beforeImage] : []),
                 afterImage: Array.isArray(activity.afterImage) ? activity.afterImage : (activity.afterImage ? [activity.afterImage] : []),
             });
@@ -91,6 +113,203 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
             setFormData(initialFormState());
         }
     }, [activity]);
+
+    // Available candidate activities for dependency links (strictly filtered by same ID MP)
+    const hasIdMp = Boolean(formData.idMp && formData.idMp.trim().length > 0);
+    const normCurrentIdMp = (formData.idMp || '').trim().toLowerCase();
+
+    // Sequence map across all activities
+    const sequenceMap = useMemo(() => getActivitySequenceMap(allActivities), [allActivities]);
+
+    const otherActivities = useMemo(() => {
+        if (!hasIdMp) return [];
+        return allActivities
+            .filter(a => 
+                (!activity || a.id !== activity.id) &&
+                a.idMp && 
+                a.idMp.trim().toLowerCase() === normCurrentIdMp
+            )
+            .sort((a, b) => new Date(a.horaInicio).getTime() - new Date(b.horaInicio).getTime());
+    }, [allActivities, activity, hasIdMp, normCurrentIdMp]);
+
+    // Filter candidate predecessors based on search (by sequence number #1, TAG, or description)
+    const filteredCandidatePredecessors = useMemo(() => {
+        if (!hasIdMp) return [];
+        const currentSelected = new Set(formData.predecessoras || []);
+        return otherActivities
+            .filter(a => !currentSelected.has(a.id))
+            .filter(a => {
+                if (!predecessorSearch.trim()) return true;
+                const s = predecessorSearch.toLowerCase().trim();
+                const cleanNum = s.replace(/^#/, '');
+                const seq = sequenceMap.get(a.id);
+
+                if (cleanNum && seq !== undefined && seq.toString() === cleanNum) {
+                    return true;
+                }
+
+                return (
+                    (a.tag && a.tag.toLowerCase().includes(s)) ||
+                    (a.descricao && a.descricao.toLowerCase().includes(s)) ||
+                    (a.area && a.area.toLowerCase().includes(s))
+                );
+            })
+            .slice(0, 15);
+    }, [otherActivities, formData.predecessoras, predecessorSearch, hasIdMp, sequenceMap]);
+
+    // Filter candidate successors based on search (by sequence number #1, TAG, or description)
+    const filteredCandidateSuccessors = useMemo(() => {
+        if (!hasIdMp) return [];
+        const currentSelected = new Set(formData.sucessoras || []);
+        return otherActivities
+            .filter(a => !currentSelected.has(a.id))
+            .filter(a => {
+                if (!successorSearch.trim()) return true;
+                const s = successorSearch.toLowerCase().trim();
+                const cleanNum = s.replace(/^#/, '');
+                const seq = sequenceMap.get(a.id);
+
+                if (cleanNum && seq !== undefined && seq.toString() === cleanNum) {
+                    return true;
+                }
+
+                return (
+                    (a.tag && a.tag.toLowerCase().includes(s)) ||
+                    (a.descricao && a.descricao.toLowerCase().includes(s)) ||
+                    (a.area && a.area.toLowerCase().includes(s))
+                );
+            })
+            .slice(0, 15);
+    }, [otherActivities, formData.sucessoras, successorSearch, hasIdMp, sequenceMap]);
+
+    // Predecessor full objects
+    const selectedPredecessorObjects = useMemo(() => {
+        const ids = new Set(formData.predecessoras || []);
+        return otherActivities.filter(a => ids.has(a.id) || (a.idMp && ids.has(a.idMp)) || (a.tag && ids.has(a.tag)));
+    }, [otherActivities, formData.predecessoras]);
+
+    // Successor full objects
+    const selectedSuccessorObjects = useMemo(() => {
+        const ids = new Set(formData.sucessoras || []);
+        return otherActivities.filter(a => ids.has(a.id) || (a.idMp && ids.has(a.idMp)) || (a.tag && ids.has(a.tag)));
+    }, [otherActivities, formData.sucessoras]);
+
+    // Check dependency timing conflicts
+    const dependencyAnalysis = useMemo(() => {
+        const mockAct: Activity = {
+            id: activity?.id || 'temp',
+            tag: formData.tag,
+            tipo: formData.tipo,
+            periodicidade: formData.periodicidade,
+            area: formData.area,
+            descricao: formData.descricao,
+            jornada: formData.jornada,
+            turno: formData.turno,
+            empresa: formData.empresa,
+            efetivo: formData.efetivo,
+            responsavel: formData.responsavel,
+            horaInicio: formData.horaInicio ? new Date(formData.horaInicio).toISOString() : new Date().toISOString(),
+            horaFim: formData.horaFim ? new Date(formData.horaFim).toISOString() : new Date().toISOString(),
+            duracao: formData.duracao,
+            progresso: formData.progresso,
+            "r eletrico": formData["r eletrico"],
+            labapet: formData.labapet,
+            criticidade: formData.criticidade,
+            status: formData.status,
+            predecessoras: formData.predecessoras,
+            sucessoras: formData.sucessoras
+        };
+        return analyzeDependencies(mockAct, allActivities);
+    }, [formData, activity, allActivities]);
+
+    const handleAddPredecessor = (predId: string) => {
+        const nextPreds = cleanDependencyIds([...(formData.predecessoras || []), predId]);
+        
+        // Find latest end time among predecessors in otherActivities
+        let maxPredEndMs = 0;
+        const normIdMp = (formData.idMp || '').trim().toLowerCase();
+        
+        otherActivities.forEach(a => {
+            if (nextPreds.includes(a.id) || (a.idMp && nextPreds.includes(a.idMp)) || (a.tag && nextPreds.includes(a.tag))) {
+                const pEnd = new Date(a.horaFim).getTime();
+                if (pEnd > maxPredEndMs) maxPredEndMs = pEnd;
+            }
+        });
+
+        // Compute duration to preserve
+        const durationMs = parseDurationToMs(formData.duracao, formData.horaInicio, formData.horaFim);
+        let updatedInicio = formData.horaInicio;
+        let updatedFim = formData.horaFim;
+        let updatedTurno = formData.turno;
+
+        if (maxPredEndMs > 0) {
+            const newStart = new Date(maxPredEndMs);
+            const newEnd = new Date(maxPredEndMs + durationMs);
+            updatedInicio = toLocalDateTimeLocal(newStart);
+            updatedFim = toLocalDateTimeLocal(newEnd);
+            
+            if (formData.turno !== 'ADM') {
+                const newShift = calculateShiftForDate(newStart);
+                if (newShift) updatedTurno = newShift;
+            }
+        }
+
+        setFormData(prev => ({
+            ...prev,
+            predecessoras: nextPreds,
+            horaInicio: updatedInicio,
+            horaFim: updatedFim,
+            duracao: formatMsToDuration(durationMs),
+            turno: updatedTurno
+        }));
+        setPredecessorSearch('');
+        setIsPredecessorDropdownOpen(false);
+    };
+
+    const handleRemovePredecessor = (predId: string) => {
+        setFormData(prev => ({
+            ...prev,
+            predecessoras: (prev.predecessoras || []).filter(id => id !== predId)
+        }));
+    };
+
+    const handleAddSuccessor = (succId: string) => {
+        setFormData(prev => ({
+            ...prev,
+            sucessoras: cleanDependencyIds([...(prev.sucessoras || []), succId])
+        }));
+        setSuccessorSearch('');
+        setIsSuccessorDropdownOpen(false);
+    };
+
+    const handleRemoveSuccessor = (succId: string) => {
+        setFormData(prev => ({
+            ...prev,
+            sucessoras: (prev.sucessoras || []).filter(id => id !== succId)
+        }));
+    };
+
+    const handleAutoAlignWithPredecessors = () => {
+        if (!dependencyAnalysis.suggestedStartTime) return;
+        
+        const durationMs = parseDurationToMs(formData.duracao, formData.horaInicio, formData.horaFim);
+        const newStart = dependencyAnalysis.suggestedStartTime;
+        const newEnd = new Date(newStart.getTime() + durationMs);
+
+        let updatedTurno = formData.turno;
+        if (formData.turno !== 'ADM') {
+            const newShift = calculateShiftForDate(newStart);
+            if (newShift) updatedTurno = newShift;
+        }
+
+        setFormData(prev => ({
+            ...prev,
+            horaInicio: toLocalDateTimeLocal(newStart),
+            horaFim: toLocalDateTimeLocal(newEnd),
+            duracao: formatMsToDuration(durationMs),
+            turno: updatedTurno
+        }));
+    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -141,6 +360,59 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                     horaInicioReal: updatedInicioReal,
                     horaFimReal: updatedFimReal
                 };
+            });
+        } else if (name === 'duracao') {
+            const durationMs = parseDurationToMs(value);
+            setFormData(prev => {
+                if (prev.horaInicio) {
+                    const startMs = new Date(prev.horaInicio).getTime();
+                    if (!isNaN(startMs)) {
+                        const newEnd = new Date(startMs + durationMs);
+                        return {
+                            ...prev,
+                            duracao: value,
+                            horaFim: toLocalDateTimeLocal(newEnd)
+                        };
+                    }
+                }
+                return { ...prev, duracao: value };
+            });
+        } else if (name === 'horaInicio') {
+            setFormData(prev => {
+                const durationMs = parseDurationToMs(prev.duracao, prev.horaInicio, prev.horaFim);
+                const startMs = new Date(value).getTime();
+                if (!isNaN(startMs)) {
+                    const newEnd = new Date(startMs + durationMs);
+                    let newTurno = prev.turno;
+                    if (prev.turno !== 'ADM') {
+                        const derivedShift = calculateShiftForDate(new Date(startMs));
+                        if (derivedShift) newTurno = derivedShift;
+                    }
+                    return {
+                        ...prev,
+                        horaInicio: value,
+                        horaFim: toLocalDateTimeLocal(newEnd),
+                        duracao: formatMsToDuration(durationMs),
+                        turno: newTurno
+                    };
+                }
+                return { ...prev, horaInicio: value };
+            });
+        } else if (name === 'horaFim') {
+            setFormData(prev => {
+                if (prev.horaInicio && value) {
+                    const startMs = new Date(prev.horaInicio).getTime();
+                    const endMs = new Date(value).getTime();
+                    if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+                        const diffMs = endMs - startMs;
+                        return {
+                            ...prev,
+                            horaFim: value,
+                            duracao: formatMsToDuration(diffMs)
+                        };
+                    }
+                }
+                return { ...prev, horaFim: value };
             });
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
@@ -399,6 +671,332 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, onSubmit, 
                 <div>
                     <label className="block text-sm font-medium">Fim Real</label>
                     <input type="datetime-local" name="horaFimReal" value={formData.horaFimReal || ''} onChange={handleChange} className={inputClasses} disabled={disableDates} />
+                </div>
+            </div>
+
+            {/* Dependencies Section (Predecessoras & Sucessoras) */}
+            <div className="bg-indigo-50/60 dark:bg-indigo-950/30 p-3.5 rounded-lg border border-indigo-200 dark:border-indigo-800/60 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2">
+                        <LinkIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <h4 className="text-xs font-bold text-indigo-900 dark:text-indigo-200 uppercase tracking-wide">
+                            Vínculos e Dependências (Mesmo ID da MP)
+                        </h4>
+                    </div>
+                    <div className="flex items-center space-x-2 text-[11px]">
+                        {hasIdMp ? (
+                            <span className="bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 font-mono font-semibold px-2 py-0.5 rounded">
+                                ID MP: {formData.idMp} ({otherActivities.length} disp.)
+                            </span>
+                        ) : (
+                            <span className="bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 font-semibold px-2 py-0.5 rounded">
+                                ⚠️ ID MP Obrigatório p/ Vínculos
+                            </span>
+                        )}
+                        <span className="bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 font-semibold px-2 py-0.5 rounded">
+                            {selectedPredecessorObjects.length} Pred. / {selectedSuccessorObjects.length} Suc.
+                        </span>
+                    </div>
+                </div>
+
+                {!hasIdMp && (
+                    <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 p-2.5 rounded-md text-xs text-amber-900 dark:text-amber-200 flex items-start space-x-2">
+                        <span className="text-base">ℹ️</span>
+                        <div>
+                            <p className="font-semibold">Vínculos restritos ao mesmo ID da MP</p>
+                            <p className="text-[11px] opacity-90 mt-0.5">
+                                Para vincular predecessoras e sucessoras, preencha o campo <strong>ID da MP</strong> desta atividade. Os vínculos só podem ser criados entre atividades que compartilham o mesmo ID da MP.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Timing Conflicts Alert */}
+                {hasIdMp && dependencyAnalysis.conflicts.length > 0 && (
+                    <div className="bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/60 p-2.5 rounded-md space-y-1.5 text-xs text-amber-900 dark:text-amber-200">
+                        <div className="flex items-center justify-between font-bold">
+                            <span className="flex items-center gap-1.5">
+                                ⚠️ Atenção aos Vínculos:
+                            </span>
+                            {dependencyAnalysis.suggestedStartTime && !disableDates && (
+                                <button
+                                    type="button"
+                                    onClick={handleAutoAlignWithPredecessors}
+                                    className="bg-amber-600 hover:bg-amber-700 text-white text-[11px] px-2.5 py-1 rounded shadow-xs font-medium flex items-center gap-1 transition-colors"
+                                >
+                                    ⚡ Ajustar Início para {dependencyAnalysis.suggestedStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </button>
+                            )}
+                        </div>
+                        <ul className="list-disc list-inside space-y-0.5 text-[11px] opacity-90 pl-1">
+                            {dependencyAnalysis.conflicts.map((c, i) => (
+                                <li key={i}>{c.message}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Predecessoras (Anteriores) */}
+                    <div className="space-y-2">
+                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+                            Predecessoras (Atividades que devem ocorrer antes)
+                        </label>
+
+                        {/* List of selected Predecessors */}
+                        <div className="space-y-1.5 min-h-[36px]">
+                            {selectedPredecessorObjects.length === 0 ? (
+                                <p className="text-xs text-gray-400 italic py-1">Nenhuma predecessora vinculada.</p>
+                            ) : (
+                                selectedPredecessorObjects.map(pred => {
+                                    const predSeq = sequenceMap.get(pred.id);
+                                    const predStart = new Date(pred.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                    const predEnd = new Date(pred.horaFim).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                    const isConflict = new Date(pred.horaFim).getTime() > new Date(formData.horaInicio).getTime();
+
+                                    return (
+                                        <div 
+                                            key={pred.id} 
+                                            className={`flex items-center justify-between p-1.5 rounded text-xs border ${
+                                                isConflict 
+                                                    ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200' 
+                                                    : 'bg-white dark:bg-gray-800 border-indigo-200 dark:border-indigo-900/60 text-gray-800 dark:text-gray-200'
+                                            }`}
+                                        >
+                                            <div className="truncate pr-2 flex flex-col">
+                                                <div className="flex items-center gap-1.5 font-bold">
+                                                    {predSeq !== undefined && (
+                                                        <span className="font-mono bg-indigo-600 text-white dark:bg-indigo-500 font-bold px-1.5 py-0.2 rounded text-[10px]">
+                                                            #{predSeq}
+                                                        </span>
+                                                    )}
+                                                    <span className="font-mono bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 px-1 rounded text-[10px]">
+                                                        {pred.tag}
+                                                    </span>
+                                                    {pred.idMp && (
+                                                        <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">
+                                                            ({pred.idMp})
+                                                        </span>
+                                                    )}
+                                                    <span className="truncate">{pred.descricao}</span>
+                                                </div>
+                                                <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                                                    Término: {new Date(pred.horaFim).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às {predEnd}
+                                                </span>
+                                            </div>
+
+                                            {!isOperator && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemovePredecessor(pred.id)}
+                                                    className="text-gray-400 hover:text-red-500 p-1 transition-colors"
+                                                    title="Remover vínculo"
+                                                >
+                                                    <XMarkIcon className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        {/* Add Predecessor Search / Dropdown */}
+                        {!isOperator && hasIdMp && (
+                            <div className="relative">
+                                <div className="flex items-center gap-1">
+                                    <input
+                                        type="text"
+                                        value={predecessorSearch}
+                                        onChange={(e) => {
+                                            setPredecessorSearch(e.target.value);
+                                            setIsPredecessorDropdownOpen(true);
+                                        }}
+                                        onFocus={() => setIsPredecessorDropdownOpen(true)}
+                                        placeholder={`+ Digite o nº (#1, #2), TAG ou Descrição nesta MP (${formData.idMp})...`}
+                                        className="w-full text-xs p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                    />
+                                    {isPredecessorDropdownOpen && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsPredecessorDropdownOpen(false)}
+                                            className="text-xs px-2 py-1 text-gray-500 hover:text-gray-700"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+
+                                {isPredecessorDropdownOpen && (
+                                    <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-xl z-50 max-h-48 overflow-y-auto">
+                                        {filteredCandidatePredecessors.length === 0 ? (
+                                            <p className="p-2 text-xs text-gray-400 italic">Nenhuma outra atividade encontrada nesta MP ({formData.idMp}).</p>
+                                        ) : (
+                                            filteredCandidatePredecessors.map(candidate => {
+                                                const cSeq = sequenceMap.get(candidate.id);
+                                                return (
+                                                    <div
+                                                        key={candidate.id}
+                                                        onClick={() => handleAddPredecessor(candidate.id)}
+                                                        className="p-2 text-xs hover:bg-indigo-50 dark:hover:bg-indigo-950/50 cursor-pointer border-b border-gray-100 dark:border-gray-700/50 last:border-0 flex items-start gap-2"
+                                                    >
+                                                        {cSeq !== undefined && (
+                                                            <span className="flex-shrink-0 min-w-[24px] text-center font-mono font-bold text-[11px] bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-1 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                                                                #{cSeq}
+                                                            </span>
+                                                        )}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between gap-1">
+                                                                <span className="font-bold text-indigo-600 dark:text-indigo-400 truncate">
+                                                                    {candidate.tag} ({candidate.idMp})
+                                                                </span>
+                                                                <span className="text-[10px] text-gray-500 flex-shrink-0">
+                                                                    {new Date(candidate.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(candidate.horaFim).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-gray-700 dark:text-gray-300 truncate mt-0.5">
+                                                                {candidate.descricao}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Sucessoras (Posteriores) */}
+                    <div className="space-y-2">
+                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+                            Sucessoras (Atividades que devem ocorrer após esta)
+                        </label>
+
+                        {/* List of selected Successors */}
+                        <div className="space-y-1.5 min-h-[36px]">
+                            {selectedSuccessorObjects.length === 0 ? (
+                                <p className="text-xs text-gray-400 italic py-1">Nenhuma sucessora vinculada.</p>
+                            ) : (
+                                selectedSuccessorObjects.map(succ => {
+                                    const succSeq = sequenceMap.get(succ.id);
+                                    const succStart = new Date(succ.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                    const isConflict = new Date(formData.horaFim).getTime() > new Date(succ.horaInicio).getTime();
+
+                                    return (
+                                        <div 
+                                            key={succ.id} 
+                                            className={`flex items-center justify-between p-1.5 rounded text-xs border ${
+                                                isConflict 
+                                                    ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200' 
+                                                    : 'bg-white dark:bg-gray-800 border-indigo-200 dark:border-indigo-900/60 text-gray-800 dark:text-gray-200'
+                                            }`}
+                                        >
+                                            <div className="truncate pr-2 flex flex-col">
+                                                <div className="flex items-center gap-1.5 font-bold">
+                                                    {succSeq !== undefined && (
+                                                        <span className="font-mono bg-blue-600 text-white dark:bg-blue-500 font-bold px-1.5 py-0.2 rounded text-[10px]">
+                                                            #{succSeq}
+                                                        </span>
+                                                    )}
+                                                    <span className="font-mono bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 px-1 rounded text-[10px]">
+                                                        {succ.tag}
+                                                    </span>
+                                                    {succ.idMp && (
+                                                        <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">
+                                                            ({succ.idMp})
+                                                        </span>
+                                                    )}
+                                                    <span className="truncate">{succ.descricao}</span>
+                                                </div>
+                                                <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                                                    Início: {new Date(succ.horaInicio).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às {succStart}
+                                                </span>
+                                            </div>
+
+                                            {!isOperator && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveSuccessor(succ.id)}
+                                                    className="text-gray-400 hover:text-red-500 p-1 transition-colors"
+                                                    title="Remover vínculo"
+                                                >
+                                                    <XMarkIcon className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        {/* Add Successor Search / Dropdown */}
+                        {!isOperator && hasIdMp && (
+                            <div className="relative">
+                                <div className="flex items-center gap-1">
+                                    <input
+                                        type="text"
+                                        value={successorSearch}
+                                        onChange={(e) => {
+                                            setSuccessorSearch(e.target.value);
+                                            setIsSuccessorDropdownOpen(true);
+                                        }}
+                                        onFocus={() => setIsSuccessorDropdownOpen(true)}
+                                        placeholder={`+ Digite o nº (#1, #2), TAG ou Descrição nesta MP (${formData.idMp})...`}
+                                        className="w-full text-xs p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                    />
+                                    {isSuccessorDropdownOpen && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsSuccessorDropdownOpen(false)}
+                                            className="text-xs px-2 py-1 text-gray-500 hover:text-gray-700"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+
+                                {isSuccessorDropdownOpen && (
+                                    <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-xl z-50 max-h-48 overflow-y-auto">
+                                        {filteredCandidateSuccessors.length === 0 ? (
+                                            <p className="p-2 text-xs text-gray-400 italic">Nenhuma outra atividade encontrada nesta MP ({formData.idMp}).</p>
+                                        ) : (
+                                            filteredCandidateSuccessors.map(candidate => {
+                                                const cSeq = sequenceMap.get(candidate.id);
+                                                return (
+                                                    <div
+                                                        key={candidate.id}
+                                                        onClick={() => handleAddSuccessor(candidate.id)}
+                                                        className="p-2 text-xs hover:bg-indigo-50 dark:hover:bg-indigo-950/50 cursor-pointer border-b border-gray-100 dark:border-gray-700/50 last:border-0 flex items-start gap-2"
+                                                    >
+                                                        {cSeq !== undefined && (
+                                                            <span className="flex-shrink-0 min-w-[24px] text-center font-mono font-bold text-[11px] bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                                                                #{cSeq}
+                                                            </span>
+                                                        )}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between gap-1">
+                                                                <span className="font-bold text-indigo-600 dark:text-indigo-400 truncate">
+                                                                    {candidate.tag} ({candidate.idMp})
+                                                                </span>
+                                                                <span className="text-[10px] text-gray-500 flex-shrink-0">
+                                                                    {new Date(candidate.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(candidate.horaFim).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-gray-700 dark:text-gray-300 truncate mt-0.5">
+                                                                {candidate.descricao}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 

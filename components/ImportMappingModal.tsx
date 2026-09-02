@@ -30,6 +30,8 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         horaFimReal: '',
         duracao: '',
         progresso: '',
+        predecessoras: '',
+        sucessoras: '',
         criticidade: '',
     };
 
@@ -49,6 +51,8 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         { key: 'horaFim', label: 'Hora Fim', help: 'Horário planejado de fim' },
         { key: 'duracao', label: 'Duração', help: 'Tempo estimado (opcional, substitui o cálculo automático)' },
         { key: 'progresso', label: '% Avanço', help: 'Porcentagem de progresso físico (0 a 100)' },
+        { key: 'predecessoras', label: 'Predecessoras', help: 'Atividades anteriores (TAGs, IDs ou nº de linhas separados por vírgula)' },
+        { key: 'sucessoras', label: 'Sucessoras', help: 'Atividades posteriores (TAGs, IDs ou nº de linhas separados por vírgula)' },
         { key: 'horaInicioReal', label: 'Início Real', help: 'Data/Hora de início real de execução' },
         { key: 'horaFimReal', label: 'Fim Real', help: 'Data/Hora de fim real de execução' },
         { key: 'criticidade', label: 'Criticidade', help: 'Normal, Alta, Urgente' },
@@ -93,6 +97,8 @@ export const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ isOpen, 
         newMapping.horaFim = findBestMatch(['fim', 'término', 'termino', 'hora fim']);
         newMapping.duracao = findBestMatch(['duração', 'duracao', 'tempo', 'estimado']);
         newMapping.progresso = findBestMatch(['avanço', 'progresso', 'avanço físico', '% avanço', '% progresso']);
+        newMapping.predecessoras = findBestMatch(['predecessora', 'predecessor', 'predecessoras', 'dep', 'dependencia', 'anterior']);
+        newMapping.sucessoras = findBestMatch(['sucessora', 'sucessor', 'sucessoras', 'posterior', 'proxima']);
         newMapping.horaInicioReal = findBestMatch(['início real', 'inicio real', 'real início', 'execução início']);
         newMapping.horaFimReal = findBestMatch(['fim real', 'término real', 'termino real', 'real fim', 'execução fim']);
         newMapping.criticidade = findBestMatch(['criticidade', 'prioridade']);

@@ -25,6 +25,7 @@ import { TrashIcon } from './components/icons/TrashIcon';
 import { PencilIcon } from './components/icons/PencilIcon';
 import { safeStorage } from './utils/storage';
 import { supabase } from './supabaseClient'; 
+import { parseAndResolveDependencyString, cascadeScheduleForActivities } from './utils/dependencyUtils';
 
 const App: React.FC = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -532,25 +533,67 @@ const App: React.FC = () => {
             });
         }
 
-        setActivities(prev => [...prev, ...activitiesToAdd]);
-        for (const act of activitiesToAdd) await saveActivityToSupabase(act);
+        const combined = [...activities, ...activitiesToAdd];
+        const { updatedActivities, changedIds } = cascadeScheduleForActivities(combined, activity.idMp);
+
+        setActivities(updatedActivities);
+        for (const act of activitiesToAdd) {
+            const toSave = updatedActivities.find(a => a.id === act.id) || act;
+            await saveActivityToSupabase(toSave);
+        }
+        for (const act of updatedActivities) {
+            if (changedIds.has(act.id) && !activitiesToAdd.some(a => a.id === act.id)) {
+                await saveActivityToSupabase(act);
+            }
+        }
         addAuditLog("CRIAR", `Criou ${activitiesToAdd.length} atividades`, activity.id);
     };
 
     const handleUpdateActivity = async (updatedActivity: Activity, recurrenceLimit?: Date) => {
-        setActivities(prev => prev.map(act => act.id === updatedActivity.id ? updatedActivity : act));
-        await saveActivityToSupabase(updatedActivity);
+        let baseList = activities.map(act => act.id === updatedActivity.id ? updatedActivity : act);
         
+        const newInstances: Activity[] = [];
         if (recurrenceLimit && updatedActivity.periodicidade !== Recorrencia.NaoHa) {
              const { id, ...activityTemplate } = updatedActivity;
              const futureActivities = generateRecurringActivities(activityTemplate, recurrenceLimit);
              if (futureActivities.length > 0) {
-                const newInstances = futureActivities.map((act, index) => ({ ...act, id: `act_gen_${Date.now()}_${index}` }));
-                setActivities(prev => [...prev, ...newInstances]);
-                for (const act of newInstances) await saveActivityToSupabase(act);
+                futureActivities.forEach((act, index) => {
+                    newInstances.push({ ...act, id: `act_gen_${Date.now()}_${index}` });
+                });
+                baseList = [...baseList, ...newInstances];
              }
         }
+
+        const { updatedActivities, changedIds } = cascadeScheduleForActivities(baseList, updatedActivity.idMp);
+        setActivities(updatedActivities);
+        
+        const finalUpdated = updatedActivities.find(a => a.id === updatedActivity.id) || updatedActivity;
+        await saveActivityToSupabase(finalUpdated);
+
+        for (const inst of newInstances) {
+            const toSave = updatedActivities.find(a => a.id === inst.id) || inst;
+            await saveActivityToSupabase(toSave);
+        }
+
+        for (const act of updatedActivities) {
+            if (changedIds.has(act.id) && act.id !== updatedActivity.id && !newInstances.some(n => n.id === act.id)) {
+                await saveActivityToSupabase(act);
+            }
+        }
         setEditingActivity(null);
+    };
+    
+    const handleRecalculateSchedule = async (targetMpId?: string) => {
+        const { updatedActivities, changedCount } = cascadeScheduleForActivities(activities, targetMpId);
+        if (changedCount > 0) {
+            setActivities(updatedActivities);
+            for (const act of updatedActivities) {
+                await saveActivityToSupabase(act);
+            }
+            alert(`Cronograma ajustado: ${changedCount} atividade(s) tiveram datas e horários recalculados respeitando seus vínculos e durações!`);
+        } else {
+            alert("O cronograma já está perfeitamente alinhado com todas as predecessoras e durações configuradas.");
+        }
     };
     
     const handleUpdateStatus = async (activityId: string, status: ActivityStatus) => {
@@ -593,7 +636,7 @@ const App: React.FC = () => {
     };
 
     const handleActivityDateChange = async (activityId: string, newDate: Date) => {
-        // This is the ONLY place where dates change programmatically via drag-and-drop
+        // This is where dates change programmatically via drag-and-drop
         const activity = activities.find(a => a.id === activityId);
         if (!activity) return;
         const oldStart = new Date(activity.horaInicio);
@@ -859,6 +902,8 @@ const App: React.FC = () => {
                 criticidade: mapping.criticidade ? (row[mapping.criticidade] as Criticidade || Criticidade.Normal) : Criticidade.Normal,
                 status: initialStatus,
                 periodicidade: Recorrencia.NaoHa,
+                predecessoras: [],
+                sucessoras: [],
                 beforeImage: [],
                 afterImage: [],
                 attachments: [],
@@ -866,19 +911,59 @@ const App: React.FC = () => {
             };
         });
 
+        // Resolve dependencies (Predecessoras & Sucessoras) across batch and existing activities (strictly same ID MP)
+        const rowToActivityMap = new Map<number, Activity>();
+        newActivities.forEach((act, idx) => {
+            rowToActivityMap.set(idx + 1, act);
+        });
+
+        const allActivitiesPool = [...activities, ...newActivities];
+
+        newActivities.forEach((act, idx) => {
+            const row = pendingImportData[idx];
+            if (act.idMp && mapping.predecessoras && row[mapping.predecessoras]) {
+                act.predecessoras = parseAndResolveDependencyString(
+                    row[mapping.predecessoras],
+                    rowToActivityMap,
+                    allActivitiesPool,
+                    mapping.predecessoraSeparator || ',',
+                    act.idMp
+                );
+            }
+            if (act.idMp && mapping.sucessoras && row[mapping.sucessoras]) {
+                act.sucessoras = parseAndResolveDependencyString(
+                    row[mapping.sucessoras],
+                    rowToActivityMap,
+                    allActivitiesPool,
+                    mapping.predecessoraSeparator || ',',
+                    act.idMp
+                );
+            }
+        });
+
+        // Cascade schedule for all imported activities with dependencies respecting duration
+        const combinedPool = editingBatchId
+            ? [...activities.filter(a => !a.id.startsWith(`imported_${batchId}_`)), ...newActivities]
+            : [...activities, ...newActivities];
+
+        const { updatedActivities: cascadedPool, changedIds: importCascadeChanged } = cascadeScheduleForActivities(combinedPool);
+        const finalNewActivities = cascadedPool.filter(a => newActivities.some(n => n.id === a.id));
+
         if (editingBatchId) {
-            // If editing, remove old ones first (simple replace logic)
-            setActivities(prev => {
-                const filtered = prev.filter(a => !a.id.startsWith(`imported_${batchId}_`));
-                return [...filtered, ...newActivities];
-            });
-            // Update batch record
-            setImportBatches(prev => prev.map(b => b.id === batchId ? { ...b, mapping, count: newActivities.length } : b));
-            // Trigger save for each new activity (could be heavy, ideally batch save)
-            for (const act of newActivities) await saveActivityToSupabase(act);
+            setActivities(cascadedPool);
+            setImportBatches(prev => prev.map(b => b.id === batchId ? { ...b, mapping, count: finalNewActivities.length } : b));
+            for (const act of cascadedPool) {
+                if (act.id.startsWith(`imported_${batchId}_`) || importCascadeChanged.has(act.id)) {
+                    await saveActivityToSupabase(act);
+                }
+            }
         } else {
-            setActivities(prev => [...prev, ...newActivities]);
-            for (const act of newActivities) await saveActivityToSupabase(act);
+            setActivities(cascadedPool);
+            for (const act of cascadedPool) {
+                if (finalNewActivities.some(n => n.id === act.id) || importCascadeChanged.has(act.id)) {
+                    await saveActivityToSupabase(act);
+                }
+            }
         }
 
         // Upload original file if new
@@ -982,10 +1067,10 @@ const App: React.FC = () => {
         const isOperator = user?.role === 'operator';
         switch (currentView) {
             case 'dashboard': return <DashboardView activities={filteredAndSortedActivities} customStatusLabels={statusLabels} />;
-            case 'list': return <ActivityListView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} customStatusLabels={statusLabels} />;
+            case 'list': return <ActivityListView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} customStatusLabels={statusLabels} onRecalculateSchedule={() => handleRecalculateSchedule(filters.idMp)} />;
             case 'board': return <ActivityBoardView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'calendar': return <ActivityCalendarView activities={filteredAndSortedActivities} onEdit={openEditModal} customStatusLabels={statusLabels} onDateChange={handleActivityDateChange} userRole={user?.role} />;
-            case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateActivity={handleUpdateActivity} />;
+            case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateActivity={handleUpdateActivity} onRecalculateSchedule={() => handleRecalculateSchedule(filters.idMp)} />;
             case 'scurve': return <SCurveView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onUpdateActivity={handleUpdateActivity} customStatusLabels={statusLabels} />;
             case 'report': return <ReportView activities={filteredAndSortedActivities} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'audit': return <AuditLogView logs={auditLogs} />;
@@ -1297,6 +1382,7 @@ const App: React.FC = () => {
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingActivity ? (user?.role === 'operator' ? "Visualizar / Atualizar Status" : "Editar") : "Criar"}>
                 <ActivityForm 
                     activity={editingActivity} 
+                    allActivities={activities}
                     onSubmit={editingActivity ? handleUpdateActivity : handleAddActivity} 
                     onClose={() => setIsModalOpen(false)} 
                     customStatusLabels={statusLabels}

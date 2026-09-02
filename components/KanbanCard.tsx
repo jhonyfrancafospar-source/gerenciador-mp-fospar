@@ -7,6 +7,7 @@ import { PencilIcon } from './icons/PencilIcon';
 import { PaperClipIcon } from './icons/PaperClipIcon';
 import { CameraIcon } from './icons/CameraIcon';
 import { TrashIcon } from './icons/TrashIcon';
+import { LinkIcon } from './icons/LinkIcon';
 import { getCriticidadeClasses } from '../utils/styleUtils';
 
 interface KanbanCardProps {
@@ -123,6 +124,21 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ activity, onEdit, onDele
                         <ClockIcon className="w-3 h-3" />
                         <span>{new Date(activity.horaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(activity.horaFim).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
+                    {((activity.predecessoras && activity.predecessoras.length > 0) || (activity.sucessoras && activity.sucessoras.length > 0)) && (
+                        <div className="flex items-center space-x-1.5 text-[10px] text-indigo-700 dark:text-indigo-300 font-medium">
+                            <LinkIcon className="w-3 h-3" />
+                            {activity.predecessoras && activity.predecessoras.length > 0 && (
+                                <span className="bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 px-1.5 py-0.5 rounded">
+                                    ⬅️ {activity.predecessoras.length} pred
+                                </span>
+                            )}
+                            {activity.sucessoras && activity.sucessoras.length > 0 && (
+                                <span className="bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-1.5 py-0.5 rounded text-blue-700 dark:text-blue-300">
+                                    ➡️ {activity.sucessoras.length} suc
+                                </span>
+                            )}
+                        </div>
+                    )}
                      <div className="flex items-center space-x-2">
                         {hasImages && <CameraIcon className="w-3 h-3 text-blue-500"/>}
                         <PaperClipIcon className="w-3 h-3" />

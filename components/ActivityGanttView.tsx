@@ -1,12 +1,20 @@
 
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import type { Activity } from '../types';
 import { ActivityStatus } from '../types';
+import { 
+    getActivitySequenceMap,
+    parseDurationToMs,
+    formatMsToDuration,
+    calculateShiftForDate,
+    cleanDependencyIds
+} from '../utils/dependencyUtils';
 
 interface ActivityGanttViewProps {
     activities: Activity[];
     onEdit: (activity: Activity) => void;
     onUpdateActivity?: (activity: Activity) => void;
+    onRecalculateSchedule?: () => void;
 }
 
 const STATUS_COLORS: { [key in ActivityStatus]: string } = {
@@ -83,9 +91,13 @@ interface GanttBarProps {
     chartStart: number;
     hourWidth: number;
     height: number;
-    onClick: () => void;
+    onClick: (e?: React.MouseEvent) => void;
     onUpdateActivity?: (activity: Activity) => void;
     scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+    isSelectedPredecessor?: boolean;
+    isLinkingMode?: boolean;
+    isSameMpAsSelected?: boolean;
+    isCtrlHeld?: boolean;
 }
 
 const GanttBar: React.FC<GanttBarProps> = ({ 
@@ -95,7 +107,11 @@ const GanttBar: React.FC<GanttBarProps> = ({
     height, 
     onClick, 
     onUpdateActivity,
-    scrollContainerRef 
+    scrollContainerRef,
+    isSelectedPredecessor = false,
+    isLinkingMode = false,
+    isSameMpAsSelected = false,
+    isCtrlHeld = false
 }) => {
     const actStartMs = new Date(activity.horaInicio).getTime();
     const actEndMs = new Date(activity.horaFim).getTime();
@@ -107,6 +123,7 @@ const GanttBar: React.FC<GanttBarProps> = ({
 
     const tempStartRef = useRef(actStartMs);
     const tempEndRef = useRef(actEndMs);
+    const isCtrlClickedRef = useRef(false);
 
     useEffect(() => {
         if (!isDragging) {
@@ -119,6 +136,8 @@ const GanttBar: React.FC<GanttBarProps> = ({
 
     const handleStartDrag = (e: React.MouseEvent | React.TouchEvent, type: 'move' | 'resize-left' | 'resize-right') => {
         e.stopPropagation();
+
+        isCtrlClickedRef.current = ('ctrlKey' in e && (e.ctrlKey || e.metaKey)) || isCtrlHeld;
 
         const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
         const initialMouseX = clientX;
@@ -230,7 +249,13 @@ const GanttBar: React.FC<GanttBarProps> = ({
                     }
                 }
             } else {
-                onClick();
+                const syntheticEvent = {
+                    ctrlKey: isCtrlClickedRef.current,
+                    metaKey: isCtrlClickedRef.current,
+                    stopPropagation: () => {},
+                    preventDefault: () => {}
+                } as unknown as React.MouseEvent;
+                onClick(syntheticEvent);
             }
         };
 
@@ -256,10 +281,21 @@ const GanttBar: React.FC<GanttBarProps> = ({
     const barColor = STATUS_COLORS[activity.status] || 'bg-gray-500';
     const progressPercent = activity.status === ActivityStatus.Closed ? 100 : (activity.progresso !== undefined ? Number(activity.progresso) : 0);
 
+    let linkingEffectClass = '';
+    if (isSelectedPredecessor) {
+        linkingEffectClass = 'ring-4 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 z-40 shadow-2xl scale-[1.02] animate-pulse';
+    } else if (isLinkingMode && isSameMpAsSelected) {
+        linkingEffectClass = 'hover:ring-2 hover:ring-amber-400 hover:scale-[1.01] cursor-pointer';
+    }
+
     return (
         <div 
-            className={`absolute top-1/2 -translate-y-1/2 rounded-md flex items-center text-[10px] font-medium text-white shadow-sm ${barColor} select-none group transition-shadow ${
-                isDragging ? 'ring-2 ring-blue-400 z-50 cursor-grabbing shadow-2xl opacity-95 scale-[1.01]' : 'cursor-grab hover:ring-1 hover:ring-white hover:z-20 opacity-90 hover:opacity-100'
+            className={`absolute top-1/2 -translate-y-1/2 rounded-md flex items-center text-[10px] font-medium text-white shadow-sm ${barColor} select-none group transition-all ${
+                isDragging 
+                    ? 'ring-2 ring-blue-400 z-50 cursor-grabbing shadow-2xl opacity-95 scale-[1.01]' 
+                    : isSelectedPredecessor
+                        ? linkingEffectClass
+                        : 'cursor-grab hover:ring-1 hover:ring-white hover:z-20 opacity-90 hover:opacity-100 ' + linkingEffectClass
             }`}
             style={{ 
                 left: `${left}px`, 
@@ -268,7 +304,15 @@ const GanttBar: React.FC<GanttBarProps> = ({
             }}
             onMouseDown={(e) => handleStartDrag(e, 'move')}
             onTouchStart={(e) => handleStartDrag(e, 'move')}
-            title={!isDragging ? `${activity.tag} - ${activity.descricao}\n${new Date(activity.horaInicio).toLocaleString()} - ${new Date(activity.horaFim).toLocaleString()}\nAvanço: ${progressPercent}%\n(Clique e arraste para realocar dia/horário)` : undefined}
+            title={
+                !isDragging 
+                    ? isSelectedPredecessor
+                        ? `🔗 PREDECESSORA SELECIONADA\nClique em outra atividade para vinculá-la como SUCESSORA (ou pressione ESC)`
+                        : isLinkingMode && isSameMpAsSelected
+                            ? `👉 Clique para definir como SUCESSORA desta MP`
+                            : `${activity.tag} - ${activity.descricao}\n${new Date(activity.horaInicio).toLocaleString()} - ${new Date(activity.horaFim).toLocaleString()}\nAvanço: ${progressPercent}%\n(Ctrl+Clique para selecionar como predecessora / Arraste para mover)`
+                    : undefined
+            }
         >
             {/* Progress Fill Underlay */}
             {progressPercent > 0 && (
@@ -291,6 +335,11 @@ const GanttBar: React.FC<GanttBarProps> = ({
             {/* Label */}
             {width > 35 && (
                 <span className="truncate pointer-events-none px-2 font-semibold z-10 flex items-center gap-1">
+                    {isSelectedPredecessor && (
+                        <span className="bg-indigo-950/90 text-indigo-200 text-[8px] font-black px-1 rounded flex-shrink-0 uppercase tracking-tighter border border-indigo-400/50">
+                            🔗 Pred
+                        </span>
+                    )}
                     <span>{activity.descricao}</span>
                     {progressPercent > 0 && (
                         <span className="text-[9px] opacity-90 font-mono">({progressPercent}%)</span>
@@ -333,10 +382,21 @@ const GanttBar: React.FC<GanttBarProps> = ({
     );
 };
 
-export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities, onEdit, onUpdateActivity }) => {
+export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ 
+    activities, 
+    onEdit, 
+    onUpdateActivity,
+    onRecalculateSchedule
+}) => {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [hourWidth, setHourWidth] = useState(60); // Zoom level
     const [isCompact, setIsCompact] = useState(false); // Row height toggle
+    const [showDependencies, setShowDependencies] = useState(true); // Predecessor/Successor link arrows
+    const [selectedSourceActivity, setSelectedSourceActivity] = useState<Activity | null>(null);
+    const [isCtrlHeld, setIsCtrlHeld] = useState(false);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' | 'info'; id: number } | null>(null);
+    const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+
     const [yAxisWidth, setYAxisWidth] = useState<number>(() => {
         const saved = localStorage.getItem('gantt_y_axis_width');
         if (saved) {
@@ -352,6 +412,41 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
     const containerRef = useRef<HTMLDivElement>(null);
 
     const rowHeight = isCompact ? 28 : 45; 
+
+    const showToast = useCallback((message: string, type: 'success' | 'warning' | 'info' = 'info') => {
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        const id = Date.now();
+        setToast({ message, type, id });
+        toastTimerRef.current = setTimeout(() => {
+            setToast(prev => (prev?.id === id ? null : prev));
+        }, 4000);
+    }, []);
+
+    // Global keyboard listener for ESC and Ctrl/Cmd keys
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && selectedSourceActivity) {
+                setSelectedSourceActivity(null);
+                showToast('Seleção de predecessora cancelada.', 'info');
+            }
+            if (e.key === 'Control' || e.key === 'Meta') {
+                setIsCtrlHeld(true);
+            }
+        };
+
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.key === 'Control' || e.key === 'Meta') {
+                setIsCtrlHeld(false);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+        };
+    }, [selectedSourceActivity, showToast]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -506,8 +601,158 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
         }
     };
 
-    // --- Render Helpers ---
-    
+    // Sort strictly by Date first.
+    const sortedActivities = useMemo(() => {
+        return [...activities].sort((a,b) => {
+            return new Date(a.horaInicio).getTime() - new Date(b.horaInicio).getTime();
+        });
+    }, [activities]);
+
+    const sequenceMap = useMemo(() => getActivitySequenceMap(activities), [activities]);
+
+    // Calculate dependency links coordinates for SVG arrows
+    const dependencyLinks = useMemo(() => {
+        if (!showDependencies) return [];
+
+        const actMap = new Map<string, { idx: number; activity: Activity }>();
+        sortedActivities.forEach((act, idx) => {
+            actMap.set(act.id, { idx, activity: act });
+            if (act.idMp) actMap.set(act.idMp.toLowerCase(), { idx, activity: act });
+            if (act.tag) actMap.set(act.tag.toLowerCase(), { idx, activity: act });
+        });
+
+        const links: {
+            id: string;
+            fromX: number;
+            fromY: number;
+            toX: number;
+            toY: number;
+            isConflict: boolean;
+            predTag: string;
+            succTag: string;
+        }[] = [];
+
+        sortedActivities.forEach((succAct, succIdx) => {
+            if (!succAct.idMp || !succAct.idMp.trim()) return;
+            const normSuccMp = succAct.idMp.trim().toLowerCase();
+
+            const preds = succAct.predecessoras || [];
+            const succStartMs = new Date(succAct.horaInicio).getTime();
+            const succToX = (succStartMs - chartStart) * pxPerMs;
+            const succToY = succIdx * rowHeight + rowHeight / 2;
+
+            preds.forEach((predId) => {
+                const predEntry = actMap.get(predId) || actMap.get(predId.toLowerCase());
+                if (
+                    predEntry && 
+                    predEntry.activity.id !== succAct.id &&
+                    predEntry.activity.idMp &&
+                    predEntry.activity.idMp.trim().toLowerCase() === normSuccMp
+                ) {
+                    const predEndMs = new Date(predEntry.activity.horaFim).getTime();
+                    const predFromX = (predEndMs - chartStart) * pxPerMs;
+                    const predFromY = predEntry.idx * rowHeight + rowHeight / 2;
+                    const isConflict = predEndMs > succStartMs;
+
+                    links.push({
+                        id: `${predEntry.activity.id}->${succAct.id}`,
+                        fromX: predFromX,
+                        fromY: predFromY,
+                        toX: succToX,
+                        toY: succToY,
+                        isConflict,
+                        predTag: predEntry.activity.tag,
+                        succTag: succAct.tag
+                    });
+                }
+            });
+        });
+
+        return links;
+    }, [showDependencies, sortedActivities, chartStart, pxPerMs, rowHeight]);
+
+    // Activity Click & Dependency Linking Handler
+    const handleActivityClick = useCallback((clickedAct: Activity, e?: React.MouseEvent) => {
+        const isCtrl = !!(e && (e.ctrlKey || e.metaKey)) || isCtrlHeld;
+
+        // 1. If currently in linking mode (or an activity is already selected as source)
+        if (selectedSourceActivity) {
+            // Clicking the same activity deselects it
+            if (selectedSourceActivity.id === clickedAct.id) {
+                setSelectedSourceActivity(null);
+                showToast('Seleção de predecessora cancelada.', 'info');
+                return;
+            }
+
+            // Validate ID MP match
+            const sourceMp = (selectedSourceActivity.idMp || '').trim().toLowerCase();
+            const targetMp = (clickedAct.idMp || '').trim().toLowerCase();
+
+            if (!sourceMp || !targetMp || sourceMp !== targetMp) {
+                showToast(
+                    `⚠️ Não é possível vincular: Atividades devem pertencer ao mesmo ID MP (Fonte: "${selectedSourceActivity.idMp || 'Sem MP'}" ≠ Destino: "${clickedAct.idMp || 'Sem MP'}").`,
+                    'warning'
+                );
+                return;
+            }
+
+            // Check if already linked
+            const currentPreds = clickedAct.predecessoras || [];
+            if (
+                currentPreds.includes(selectedSourceActivity.id) || 
+                (selectedSourceActivity.tag && currentPreds.includes(selectedSourceActivity.tag))
+            ) {
+                showToast(`A atividade "${clickedAct.tag || clickedAct.descricao}" já possui "${selectedSourceActivity.tag || selectedSourceActivity.descricao}" como predecessora.`, 'info');
+                setSelectedSourceActivity(null);
+                return;
+            }
+
+            // Calculate auto schedule alignment for successor respecting duration
+            const predEndMs = new Date(selectedSourceActivity.horaFim).getTime();
+            const succDurationMs = parseDurationToMs(clickedAct.duracao, clickedAct.horaInicio, clickedAct.horaFim);
+            const currentSuccStartMs = new Date(clickedAct.horaInicio).getTime();
+
+            let updatedSucc: Activity = {
+                ...clickedAct,
+                predecessoras: cleanDependencyIds([...currentPreds, selectedSourceActivity.id])
+            };
+
+            // If target starts before predecessor finishes, adjust start/end respecting duration
+            if (currentSuccStartMs < predEndMs) {
+                const newStart = new Date(predEndMs);
+                const newEnd = new Date(predEndMs + succDurationMs);
+                updatedSucc.horaInicio = newStart.toISOString();
+                updatedSucc.horaFim = newEnd.toISOString();
+                updatedSucc.duracao = formatMsToDuration(succDurationMs);
+                if (updatedSucc.turno !== 'ADM') {
+                    const newShift = calculateShiftForDate(newStart);
+                    if (newShift) updatedSucc.turno = newShift as any;
+                }
+            }
+
+            if (onUpdateActivity) {
+                onUpdateActivity(updatedSucc);
+            }
+
+            const sourceTagOrDesc = selectedSourceActivity.tag || selectedSourceActivity.descricao;
+            const targetTagOrDesc = clickedAct.tag || clickedAct.descricao;
+            showToast(`✅ Vínculo criado! "${targetTagOrDesc}" agora é sucessora de "${sourceTagOrDesc}".`, 'success');
+            setSelectedSourceActivity(null);
+            return;
+        }
+
+        // 2. If Ctrl was held (or clicked while Ctrl is pressed)
+        if (isCtrl) {
+            setSelectedSourceActivity(clickedAct);
+            const tagOrDesc = clickedAct.tag || clickedAct.descricao;
+            showToast(`🔗 Atividade "${tagOrDesc}" selecionada como PREDECESSORA! Clique na atividade sucessora para vincular.`, 'info');
+            return;
+        }
+
+        // 3. Default: normal click opens edit modal
+        onEdit(clickedAct);
+    }, [selectedSourceActivity, isCtrlHeld, onUpdateActivity, onEdit, showToast]);
+
     // Current Time Line
     const renderCurrentTimeLine = () => {
         const nowMs = currentTime.getTime();
@@ -520,7 +765,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
             <div 
                 className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-20 shadow-[0_0_4px_rgba(239,68,68,0.6)] pointer-events-none" 
                 style={{ 
-                    left: `${left}px`,
+                    left: `${left}px`, 
                     transform: 'translateX(-50%)' 
                 }}
             >
@@ -535,14 +780,8 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
         return <div className="text-center p-8 bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow text-gray-800 dark:text-gray-200">Nenhuma atividade para exibir no gráfico de Gantt.</div>;
     }
 
-    // Sort strictly by Date first.
-    // Changing status should NOT move the activity if date is same.
-    const sortedActivities = [...activities].sort((a,b) => {
-        return new Date(a.horaInicio).getTime() - new Date(b.horaInicio).getTime();
-    });
-
     return (
-        <div className={`flex flex-col h-[80vh] bg-white/70 dark:bg-gray-900/80 backdrop-blur-md rounded-lg shadow border border-gray-200/50 dark:border-gray-700/50 ${isResizing ? 'select-none cursor-col-resize' : ''}`}>
+        <div className={`flex flex-col h-[80vh] bg-white/70 dark:bg-gray-900/80 backdrop-blur-md rounded-lg shadow border border-gray-200/50 dark:border-gray-700/50 relative ${isResizing ? 'select-none cursor-col-resize' : ''}`}>
             <style>{`
                 .custom-gantt-scroll::-webkit-scrollbar {
                     height: 12px;
@@ -572,10 +811,56 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                     background: #6b7280;
                 }
             `}</style>
+
+            {/* Toast Notification */}
+            {toast && (
+                <div className={`absolute top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-xl text-xs font-semibold flex items-center gap-2 border backdrop-blur-md transition-all animate-in fade-in slide-in-from-top-2 duration-200 ${
+                    toast.type === 'success' 
+                        ? 'bg-emerald-900/90 text-emerald-100 border-emerald-500/50' 
+                        : toast.type === 'warning'
+                            ? 'bg-amber-900/90 text-amber-100 border-amber-500/50'
+                            : 'bg-indigo-900/90 text-indigo-100 border-indigo-500/50'
+                }`}>
+                    <span>{toast.type === 'success' ? '✅' : toast.type === 'warning' ? '⚠️' : 'ℹ️'}</span>
+                    <span>{toast.message}</span>
+                </div>
+            )}
+
+            {/* Floating Banner when predecessor is selected */}
+            {selectedSourceActivity && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 bg-indigo-950/95 text-white px-5 py-2.5 rounded-xl shadow-2xl border border-indigo-400/60 flex items-center gap-4 backdrop-blur-md animate-in fade-in slide-in-from-bottom-3 duration-200">
+                    <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-ping" />
+                        <span className="font-bold text-xs uppercase tracking-wide text-indigo-300">Vinculando:</span>
+                    </div>
+                    <div className="text-xs flex items-center gap-1.5 flex-wrap">
+                        <span className="text-indigo-200">Predecessora:</span>
+                        <span className="font-bold bg-indigo-800/90 px-2 py-0.5 rounded border border-indigo-500/50 text-white">
+                            #{sequenceMap.get(selectedSourceActivity.id) || ''} {selectedSourceActivity.tag} - {selectedSourceActivity.descricao}
+                        </span>
+                        <span className="text-amber-300 font-bold mx-1">➔</span>
+                        <span className="text-amber-200 font-medium">Clique na atividade Sucessora</span>
+                        {selectedSourceActivity.idMp && (
+                            <span className="text-indigo-300 text-[11px] font-mono">(MP: {selectedSourceActivity.idMp})</span>
+                        )}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSelectedSourceActivity(null);
+                            showToast('Seleção cancelada.', 'info');
+                        }}
+                        className="px-2.5 py-1 text-xs font-bold bg-white/20 hover:bg-white/30 text-white rounded-md transition-colors"
+                        title="Pressione ESC ou clique para cancelar"
+                    >
+                        Cancelar (Esc)
+                    </button>
+                </div>
+            )}
             
             {/* Controls Toolbar */}
-            <div className="p-2 border-b border-gray-200/50 dark:border-gray-700/50 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50 rounded-t-lg">
-                <div className="flex items-center space-x-4">
+            <div className="p-2 border-b border-gray-200/50 dark:border-gray-700/50 flex flex-wrap items-center justify-between gap-2 bg-gray-50/50 dark:bg-gray-800/50 rounded-t-lg">
+                <div className="flex flex-wrap items-center gap-3">
                     <div className="flex items-center space-x-1 bg-white/50 dark:bg-gray-700/50 rounded-md border dark:border-gray-600 p-0.5">
                         <button 
                             onClick={() => setHourWidth(prev => Math.max(20, prev - 10))}
@@ -604,15 +889,57 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                         <span>Compacto</span>
                     </label>
 
-                    <div className="hidden md:flex items-center space-x-1.5 text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-md border border-blue-200/60 dark:border-blue-800/60">
+                    <label className="flex items-center cursor-pointer space-x-1.5 text-xs text-gray-700 dark:text-gray-300">
+                        <input 
+                            type="checkbox" 
+                            checked={showDependencies} 
+                            onChange={(e) => setShowDependencies(e.target.checked)} 
+                            className="rounded text-indigo-600 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600"
+                        />
+                        <span className="font-semibold text-indigo-600 dark:text-indigo-400">🔗 Vínculos ({dependencyLinks.length})</span>
+                    </label>
+
+                    {/* Quick Link Badge / Toggle Indicator */}
+                    <div 
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all ${
+                            selectedSourceActivity 
+                                ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-700 shadow-sm'
+                                : isCtrlHeld
+                                    ? 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950 dark:text-indigo-200 shadow-sm'
+                                    : 'bg-white/80 dark:bg-gray-700/80 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600'
+                        }`}
+                        title="Segure a tecla CTRL e clique em uma atividade para selecioná-la como Predecessora, depois clique em outra para vinculá-la como Sucessora"
+                    >
+                        <span>🔗</span>
+                        <span>
+                            {selectedSourceActivity 
+                                ? 'Clique na Sucessora...' 
+                                : isCtrlHeld 
+                                    ? 'Ctrl Ativo: Clique na Predecessora' 
+                                    : 'Ctrl + Clique p/ Vincular'}
+                        </span>
+                    </div>
+
+                    {onRecalculateSchedule && (
+                        <button
+                            type="button"
+                            onClick={onRecalculateSchedule}
+                            className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 rounded border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors flex items-center space-x-1 shadow-sm"
+                            title="Ajustar e alinhar automaticamente datas e horários de atividades com predecessoras/sucessoras respeitando durações"
+                        >
+                            <span>⚡ Auto-Ajustar Vínculos</span>
+                        </button>
+                    )}
+
+                    <div className="hidden lg:flex items-center space-x-1.5 text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-md border border-blue-200/60 dark:border-blue-800/60">
                         <span className="font-bold">💡 Dica:</span>
-                        <span>Clique e arraste as barras no gráfico para reordenar data ou horário.</span>
+                        <span>Segure Ctrl e clique em uma atividade, depois clique em outra para vincular como sucessora.</span>
                     </div>
                 </div>
                 
                 <button 
                     onClick={scrollToNow}
-                    className="px-3 py-1 text-xs bg-red-100/80 text-red-700 dark:bg-red-900/50 dark:text-red-300 rounded border border-red-200 dark:border-red-800 hover:bg-red-200 transition-colors"
+                    className="px-3 py-1 text-xs bg-red-100/80 text-red-700 dark:bg-red-900/50 dark:text-red-300 rounded border border-red-200 dark:border-red-800 hover:bg-red-200 transition-colors font-medium shadow-xs"
                 >
                     Ir para Agora
                 </button>
@@ -620,11 +947,6 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
 
             {/* Main Chart Area */}
             <div className="flex-1 overflow-x-scroll overflow-y-auto relative custom-gantt-scroll" ref={containerRef}>
-                {/* 
-                   KEY LAYOUT FIX:
-                   Ensure the container for rows and grid is exactly the same width.
-                   Grid acts as absolute background to the relative content container.
-                */}
                 <div className="relative inline-block" style={{ minWidth: '100%' }}>
                     
                     {/* Header Container (Sticky) */}
@@ -769,8 +1091,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                     
                     {/* Chart Body */}
                     <div className="relative">
-                         {/* Background Grid & Current Time */}
-                         {/* Positioned ABSOLUTE covering the entire width of rows, shifted by yAxisWidth */}
+                        {/* Background Grid & Current Time */}
                         <div 
                             className="absolute top-0 bottom-0" 
                             style={{ 
@@ -780,8 +1101,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                                 zIndex: 0
                             }}
                         >
-                             {/* Draw grid lines for every hour - Exact match with header logic */}
-                             {days.map((day, dayIdx) => (
+                            {days.map((day, dayIdx) => (
                                 <React.Fragment key={`grid-${day.toISOString()}`}>
                                     {Array.from({ length: 24 }, (_, i) => {
                                         const isDayStart = i === 0;
@@ -803,48 +1123,146 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({ activities
                                         );
                                     })}
                                 </React.Fragment>
-                             ))}
+                            ))}
 
                             {renderCurrentTimeLine()}
                         </div>
 
-                        {/* Activity Rows */}
-                        {sortedActivities.map((activity, index) => (
-                            <div 
-                                key={activity.id} 
-                                style={{ height: `${rowHeight}px` }} 
-                                className={`flex items-center border-b border-gray-100 dark:border-gray-700/50 relative hover:bg-blue-50/50 dark:hover:bg-gray-700/30 transition-colors z-10 ${index % 2 === 0 ? 'bg-transparent' : 'bg-gray-50/30 dark:bg-gray-800/30'}`}
+                        {/* SVG Layer for Dependency Connector Arrows */}
+                        {showDependencies && dependencyLinks.length > 0 && (
+                            <svg 
+                                className="absolute top-0 bottom-0 pointer-events-none"
+                                style={{ 
+                                    left: `${yAxisWidth}px`, 
+                                    width: `${totalChartWidth}px`, 
+                                    height: `${sortedActivities.length * rowHeight}px`, 
+                                    zIndex: 15 
+                                }}
                             >
-                                {/* Y Axis Label (Sticky Left) */}
+                                <defs>
+                                    <marker id="arrow-normal" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
+                                        <path d="M0,0 L0,6 L6,3 z" fill="#6366f1" />
+                                    </marker>
+                                    <marker id="arrow-conflict" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
+                                        <path d="M0,0 L0,6 L6,3 z" fill="#ef4444" />
+                                    </marker>
+                                </defs>
+                                {dependencyLinks.map(link => {
+                                    const deltaX = link.toX - link.fromX;
+                                    const midX = deltaX > 20 ? link.fromX + deltaX / 2 : link.fromX + 15;
+                                    const pathD = deltaX >= 10
+                                        ? `M ${link.fromX} ${link.fromY} C ${midX} ${link.fromY}, ${midX} ${link.toY}, ${link.toX} ${link.toY}`
+                                        : `M ${link.fromX} ${link.fromY} L ${link.fromX + 10} ${link.fromY} L ${link.fromX + 10} ${link.fromY + (link.toY > link.fromY ? rowHeight / 2 : -rowHeight / 2)} L ${link.toX - 10} ${link.fromY + (link.toY > link.fromY ? rowHeight / 2 : -rowHeight / 2)} L ${link.toX - 10} ${link.toY} L ${link.toX} ${link.toY}`;
+
+                                    return (
+                                        <path
+                                            key={link.id}
+                                            d={pathD}
+                                            fill="none"
+                                            stroke={link.isConflict ? '#ef4444' : '#6366f1'}
+                                            strokeWidth={link.isConflict ? 2 : 1.5}
+                                            strokeDasharray={link.isConflict ? '4,3' : undefined}
+                                            markerEnd={link.isConflict ? 'url(#arrow-conflict)' : 'url(#arrow-normal)'}
+                                            opacity={0.8}
+                                        />
+                                    );
+                                })}
+                            </svg>
+                        )}
+
+                        {/* Activity Rows */}
+                        {sortedActivities.map((activity, index) => {
+                            const isSelectedPred = selectedSourceActivity?.id === activity.id;
+                            const isCandidate = !!selectedSourceActivity && !isSelectedPred && !!activity.idMp && activity.idMp.trim().toLowerCase() === selectedSourceActivity.idMp.trim().toLowerCase();
+
+                            return (
                                 <div 
-                                    style={{ width: `${yAxisWidth}px` }}
-                                    className="flex-shrink-0 h-full px-3 sticky left-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-r border-gray-200 dark:border-gray-600 flex flex-col justify-center cursor-pointer z-20 group"
-                                    title={`${activity.tag} - ${activity.descricao}`}
-                                    onClick={() => onEdit(activity)}
+                                    key={activity.id} 
+                                    style={{ height: `${rowHeight}px` }} 
+                                    className={`flex items-center border-b border-gray-100 dark:border-gray-700/50 relative hover:bg-blue-50/50 dark:hover:bg-gray-700/30 transition-colors z-10 ${
+                                        isSelectedPred 
+                                            ? 'bg-indigo-50/80 dark:bg-indigo-950/50' 
+                                            : isCandidate
+                                                ? 'bg-amber-50/40 dark:bg-amber-950/20'
+                                                : index % 2 === 0 ? 'bg-transparent' : 'bg-gray-50/30 dark:bg-gray-800/30'
+                                    }`}
                                 >
-                                    <div className="flex items-center justify-between gap-1">
-                                        <p className="font-bold truncate text-xs text-gray-800 dark:text-gray-200 group-hover:text-primary-600 transition-colors">{activity.descricao}</p>
-                                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[activity.status]}`}></div>
+                                    {/* Y Axis Label (Sticky Left) */}
+                                    <div 
+                                        style={{ width: `${yAxisWidth}px` }}
+                                        className={`flex-shrink-0 h-full px-3 sticky left-0 backdrop-blur-sm border-r flex flex-col justify-center cursor-pointer z-20 group transition-colors ${
+                                            isSelectedPred
+                                                ? 'bg-indigo-100 dark:bg-indigo-950/90 border-r-indigo-500 border-l-4 border-l-indigo-600 dark:border-l-indigo-400 ring-2 ring-indigo-500/40'
+                                                : isCandidate
+                                                    ? 'bg-amber-50/90 dark:bg-amber-950/80 border-r-amber-400 hover:bg-amber-100/90 dark:hover:bg-amber-900/60'
+                                                    : 'bg-white/90 dark:bg-gray-800/90 border-r-gray-200 dark:border-r-gray-600'
+                                        }`}
+                                        title={
+                                            isSelectedPred
+                                                ? '🔗 Predecessora selecionada (clique para cancelar ou escolha a sucessora)'
+                                                : isCandidate
+                                                    ? '👉 Clique para vincular como Sucessora desta atividade'
+                                                    : `#${sequenceMap.get(activity.id) || ''} ${activity.tag} - ${activity.descricao} (Ctrl+Clique para selecionar como predecessora)`
+                                        }
+                                        onClick={(e) => handleActivityClick(activity, e)}
+                                    >
+                                        <div className="flex items-center justify-between gap-1">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                {sequenceMap.get(activity.id) !== undefined && (
+                                                    <span className={`font-mono text-[10px] font-bold px-1 rounded flex-shrink-0 ${
+                                                        isSelectedPred
+                                                            ? 'bg-indigo-700 text-white'
+                                                            : 'text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950'
+                                                    }`}>
+                                                        #{sequenceMap.get(activity.id)}
+                                                    </span>
+                                                )}
+                                                <p className={`font-bold truncate text-xs transition-colors ${
+                                                    isSelectedPred
+                                                        ? 'text-indigo-950 dark:text-indigo-200'
+                                                        : 'text-gray-800 dark:text-gray-200 group-hover:text-primary-600'
+                                                }`}>
+                                                    {activity.descricao}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-1 flex-shrink-0">
+                                                {isSelectedPred && (
+                                                    <span className="text-[8px] font-black uppercase text-indigo-700 dark:text-indigo-300 bg-indigo-200 dark:bg-indigo-900 px-1 py-0.2 rounded animate-pulse">
+                                                        Pred
+                                                    </span>
+                                                )}
+                                                {isCandidate && (
+                                                    <span className="text-[8px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-1 py-0.2 rounded">
+                                                        ➔ Vincular
+                                                    </span>
+                                                )}
+                                                <div className={`w-2 h-2 rounded-full ${STATUS_COLORS[activity.status]}`}></div>
+                                            </div>
+                                        </div>
+                                        {!isCompact && (
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{activity.tag}</p>
+                                        )}
                                     </div>
-                                    {!isCompact && (
-                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{activity.tag}</p>
-                                    )}
+                                    
+                                    {/* Bar Container */}
+                                    <div className="relative h-full" style={{ width: `${totalChartWidth}px` }}>
+                                        <GanttBar 
+                                            activity={activity} 
+                                            chartStart={chartStart}
+                                            hourWidth={hourWidth} 
+                                            height={rowHeight}
+                                            onClick={(e) => handleActivityClick(activity, e)} 
+                                            onUpdateActivity={onUpdateActivity}
+                                            scrollContainerRef={containerRef}
+                                            isSelectedPredecessor={isSelectedPred}
+                                            isLinkingMode={!!selectedSourceActivity}
+                                            isSameMpAsSelected={isCandidate}
+                                            isCtrlHeld={isCtrlHeld}
+                                        />
+                                    </div>
                                 </div>
-                                
-                                {/* Bar Container */}
-                                <div className="relative h-full" style={{ width: `${totalChartWidth}px` }}>
-                                     <GanttBar 
-                                        activity={activity} 
-                                        chartStart={chartStart}
-                                        hourWidth={hourWidth} 
-                                        height={rowHeight}
-                                        onClick={() => onEdit(activity)} 
-                                        onUpdateActivity={onUpdateActivity}
-                                        scrollContainerRef={containerRef}
-                                    />
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </div>

@@ -100,6 +100,8 @@ export interface Activity {
     criticidade: Criticidade;
     observacoes?: string;
     status: ActivityStatus;
+    predecessoras?: string[]; // IDs das atividades predecessoras
+    sucessoras?: string[]; // IDs das atividades sucessoras
     comments?: Comment[];
     attachments?: Attachment[];
     beforeImage?: Attachment[]; // Changed to array
@@ -125,6 +127,9 @@ export interface ImportMapping {
     duracao: string; // Explicit duration mapping
     progresso?: string; // Progress column mapping
     criticidade: string;
+    predecessoras?: string; // Predecessoras column mapping
+    sucessoras?: string; // Sucessoras column mapping
+    predecessoraSeparator?: string; // Separator used for multiple dependencies (e.g. ,, ;, /, |)
 }
 
 export interface ImportBatch {
