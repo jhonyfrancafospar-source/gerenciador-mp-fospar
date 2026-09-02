@@ -98,6 +98,9 @@ interface GanttBarProps {
     isLinkingMode?: boolean;
     isSameMpAsSelected?: boolean;
     isCtrlHeld?: boolean;
+    isHoveredPredecessor?: boolean;
+    isHoveredSuccessor?: boolean;
+    isDimmed?: boolean;
 }
 
 const GanttBar: React.FC<GanttBarProps> = ({ 
@@ -111,7 +114,10 @@ const GanttBar: React.FC<GanttBarProps> = ({
     isSelectedPredecessor = false,
     isLinkingMode = false,
     isSameMpAsSelected = false,
-    isCtrlHeld = false
+    isCtrlHeld = false,
+    isHoveredPredecessor = false,
+    isHoveredSuccessor = false,
+    isDimmed = false
 }) => {
     const actStartMs = new Date(activity.horaInicio).getTime();
     const actEndMs = new Date(activity.horaFim).getTime();
@@ -284,16 +290,22 @@ const GanttBar: React.FC<GanttBarProps> = ({
     let linkingEffectClass = '';
     if (isSelectedPredecessor) {
         linkingEffectClass = 'ring-4 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 z-40 shadow-2xl scale-[1.02] animate-pulse';
+    } else if (isHoveredPredecessor) {
+        linkingEffectClass = 'ring-4 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 z-40 shadow-2xl scale-[1.02] brightness-110 animate-pulse';
+    } else if (isHoveredSuccessor) {
+        linkingEffectClass = 'ring-4 ring-emerald-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 z-40 shadow-2xl scale-[1.02] brightness-110 animate-pulse';
     } else if (isLinkingMode && isSameMpAsSelected) {
         linkingEffectClass = 'hover:ring-2 hover:ring-amber-400 hover:scale-[1.01] cursor-pointer';
+    } else if (isDimmed) {
+        linkingEffectClass = 'opacity-30 grayscale-[30%]';
     }
 
     return (
         <div 
-            className={`absolute top-1/2 -translate-y-1/2 rounded-md flex items-center text-[10px] font-medium text-white shadow-sm ${barColor} select-none group transition-all ${
+            className={`absolute top-1/2 -translate-y-1/2 rounded-md flex items-center text-[10px] font-medium text-white shadow-sm ${barColor} select-none group transition-all duration-150 ${
                 isDragging 
                     ? 'ring-2 ring-blue-400 z-50 cursor-grabbing shadow-2xl opacity-95 scale-[1.01]' 
-                    : isSelectedPredecessor
+                    : isSelectedPredecessor || isHoveredPredecessor || isHoveredSuccessor
                         ? linkingEffectClass
                         : 'cursor-grab hover:ring-1 hover:ring-white hover:z-20 opacity-90 hover:opacity-100 ' + linkingEffectClass
             }`}
@@ -308,9 +320,13 @@ const GanttBar: React.FC<GanttBarProps> = ({
                 !isDragging 
                     ? isSelectedPredecessor
                         ? `🔗 PREDECESSORA SELECIONADA\nClique em outra atividade para vinculá-la como SUCESSORA (ou pressione ESC)`
-                        : isLinkingMode && isSameMpAsSelected
-                            ? `👉 Clique para definir como SUCESSORA desta MP`
-                            : `${activity.tag} - ${activity.descricao}\n${new Date(activity.horaInicio).toLocaleString()} - ${new Date(activity.horaFim).toLocaleString()}\nAvanço: ${progressPercent}%\n(Ctrl+Clique para selecionar como predecessora / Arraste para mover)`
+                        : isHoveredPredecessor
+                            ? `🔗 ATIVIDADE PREDECESSORA\n${activity.tag} - ${activity.descricao}`
+                            : isHoveredSuccessor
+                                ? `🔗 ATIVIDADE SUCESSORA\n${activity.tag} - ${activity.descricao}`
+                                : isLinkingMode && isSameMpAsSelected
+                                    ? `👉 Clique para definir como SUCESSORA desta MP`
+                                    : `${activity.tag} - ${activity.descricao}\n${new Date(activity.horaInicio).toLocaleString()} - ${new Date(activity.horaFim).toLocaleString()}\nAvanço: ${progressPercent}%\n(Ctrl+Clique para selecionar como predecessora / Arraste para mover)`
                     : undefined
             }
         >
@@ -338,6 +354,16 @@ const GanttBar: React.FC<GanttBarProps> = ({
                     {isSelectedPredecessor && (
                         <span className="bg-indigo-950/90 text-indigo-200 text-[8px] font-black px-1 rounded flex-shrink-0 uppercase tracking-tighter border border-indigo-400/50">
                             🔗 Pred
+                        </span>
+                    )}
+                    {isHoveredPredecessor && !isSelectedPredecessor && (
+                        <span className="bg-indigo-950/95 text-indigo-200 text-[8px] font-black px-1 rounded flex-shrink-0 uppercase tracking-tighter border border-indigo-400/60 shadow-xs">
+                            🔗 Predecessora
+                        </span>
+                    )}
+                    {isHoveredSuccessor && (
+                        <span className="bg-emerald-950/95 text-emerald-200 text-[8px] font-black px-1 rounded flex-shrink-0 uppercase tracking-tighter border border-emerald-400/60 shadow-xs">
+                            🔗 Sucessora
                         </span>
                     )}
                     <span>{activity.descricao}</span>
@@ -393,6 +419,20 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
     const [isCompact, setIsCompact] = useState(false); // Row height toggle
     const [showDependencies, setShowDependencies] = useState(true); // Predecessor/Successor link arrows
     const [selectedSourceActivity, setSelectedSourceActivity] = useState<Activity | null>(null);
+    const [hoveredLink, setHoveredLink] = useState<{
+        id: string;
+        predId: string;
+        succId: string;
+        fromX: number;
+        fromY: number;
+        toX: number;
+        toY: number;
+        isConflict: boolean;
+        predTag: string;
+        succTag: string;
+        predDesc: string;
+        succDesc: string;
+    } | null>(null);
     const [isCtrlHeld, setIsCtrlHeld] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' | 'info'; id: number } | null>(null);
     const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -623,6 +663,8 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
 
         const links: {
             id: string;
+            predId: string;
+            succId: string;
             fromX: number;
             fromY: number;
             toX: number;
@@ -630,6 +672,8 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
             isConflict: boolean;
             predTag: string;
             succTag: string;
+            predDesc: string;
+            succDesc: string;
         }[] = [];
 
         sortedActivities.forEach((succAct, succIdx) => {
@@ -656,13 +700,17 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
 
                     links.push({
                         id: `${predEntry.activity.id}->${succAct.id}`,
+                        predId: predEntry.activity.id,
+                        succId: succAct.id,
                         fromX: predFromX,
                         fromY: predFromY,
                         toX: succToX,
                         toY: succToY,
                         isConflict,
                         predTag: predEntry.activity.tag,
-                        succTag: succAct.tag
+                        succTag: succAct.tag,
+                        predDesc: predEntry.activity.descricao,
+                        succDesc: succAct.descricao
                     });
                 }
             });
@@ -1136,15 +1184,27 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                     left: `${yAxisWidth}px`, 
                                     width: `${totalChartWidth}px`, 
                                     height: `${sortedActivities.length * rowHeight}px`, 
-                                    zIndex: 15 
+                                    zIndex: 25 
                                 }}
                             >
                                 <defs>
+                                    <filter id="glow-indigo" x="-30%" y="-30%" width="160%" height="160%">
+                                        <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#6366f1" floodOpacity="0.9" />
+                                    </filter>
+                                    <filter id="glow-conflict" x="-30%" y="-30%" width="160%" height="160%">
+                                        <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#ef4444" floodOpacity="0.9" />
+                                    </filter>
                                     <marker id="arrow-normal" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
                                         <path d="M0,0 L0,6 L6,3 z" fill="#6366f1" />
                                     </marker>
+                                    <marker id="arrow-normal-hover" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                                        <path d="M0,0 L0,8 L8,4 z" fill="#4338ca" />
+                                    </marker>
                                     <marker id="arrow-conflict" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
                                         <path d="M0,0 L0,6 L6,3 z" fill="#ef4444" />
+                                    </marker>
+                                    <marker id="arrow-conflict-hover" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                                        <path d="M0,0 L0,8 L8,4 z" fill="#dc2626" />
                                     </marker>
                                 </defs>
                                 {dependencyLinks.map(link => {
@@ -1154,20 +1214,75 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                         ? `M ${link.fromX} ${link.fromY} C ${midX} ${link.fromY}, ${midX} ${link.toY}, ${link.toX} ${link.toY}`
                                         : `M ${link.fromX} ${link.fromY} L ${link.fromX + 10} ${link.fromY} L ${link.fromX + 10} ${link.fromY + (link.toY > link.fromY ? rowHeight / 2 : -rowHeight / 2)} L ${link.toX - 10} ${link.fromY + (link.toY > link.fromY ? rowHeight / 2 : -rowHeight / 2)} L ${link.toX - 10} ${link.toY} L ${link.toX} ${link.toY}`;
 
+                                    const isHovered = hoveredLink?.id === link.id;
+                                    const isAnyLinkHovered = !!hoveredLink;
+
                                     return (
-                                        <path
-                                            key={link.id}
-                                            d={pathD}
-                                            fill="none"
-                                            stroke={link.isConflict ? '#ef4444' : '#6366f1'}
-                                            strokeWidth={link.isConflict ? 2 : 1.5}
-                                            strokeDasharray={link.isConflict ? '4,3' : undefined}
-                                            markerEnd={link.isConflict ? 'url(#arrow-conflict)' : 'url(#arrow-normal)'}
-                                            opacity={0.8}
-                                        />
+                                        <g 
+                                            key={link.id} 
+                                            className="cursor-pointer pointer-events-auto group"
+                                            onMouseEnter={() => setHoveredLink(link)}
+                                            onMouseLeave={() => setHoveredLink(prev => (prev?.id === link.id ? null : prev))}
+                                        >
+                                            {/* Invisible Wide Hit Area for seamless hovering */}
+                                            <path
+                                                d={pathD}
+                                                fill="none"
+                                                stroke="transparent"
+                                                strokeWidth={18}
+                                                className="cursor-pointer"
+                                            />
+
+                                            {/* Visible Line */}
+                                            <path
+                                                d={pathD}
+                                                fill="none"
+                                                stroke={link.isConflict ? (isHovered ? '#dc2626' : '#ef4444') : (isHovered ? '#4338ca' : '#6366f1')}
+                                                strokeWidth={isHovered ? 3.5 : (link.isConflict ? 2 : 1.5)}
+                                                strokeDasharray={link.isConflict ? '5,3' : (isHovered ? '6,3' : undefined)}
+                                                markerEnd={
+                                                    link.isConflict 
+                                                        ? (isHovered ? 'url(#arrow-conflict-hover)' : 'url(#arrow-conflict)') 
+                                                        : (isHovered ? 'url(#arrow-normal-hover)' : 'url(#arrow-normal)')
+                                                }
+                                                filter={isHovered ? (link.isConflict ? 'url(#glow-conflict)' : 'url(#glow-indigo)') : undefined}
+                                                opacity={isHovered ? 1 : (isAnyLinkHovered ? 0.2 : 0.85)}
+                                                className="transition-all duration-150"
+                                            />
+                                        </g>
                                     );
                                 })}
                             </svg>
+                        )}
+
+                        {/* Floating Link Hover Tooltip */}
+                        {hoveredLink && (
+                            <div 
+                                className="absolute z-50 pointer-events-none -translate-x-1/2 -translate-y-full mb-3 bg-gray-950/95 dark:bg-gray-900/95 text-white px-3.5 py-2 rounded-xl shadow-2xl border border-indigo-400/60 backdrop-blur-md flex items-center gap-2.5 whitespace-nowrap animate-in fade-in zoom-in-95 duration-150"
+                                style={{
+                                    left: `${yAxisWidth + (hoveredLink.fromX + hoveredLink.toX) / 2}px`,
+                                    top: `${Math.min(hoveredLink.fromY, hoveredLink.toY) + Math.abs(hoveredLink.toY - hoveredLink.fromY) / 2}px`
+                                }}
+                            >
+                                <div className="flex items-center gap-1.5 font-bold text-xs">
+                                    <span className="text-indigo-400">🔗 Predecessora:</span>
+                                    <span className="bg-indigo-900/90 text-indigo-100 px-2 py-0.5 rounded border border-indigo-500/40 text-[11px] font-mono">
+                                        {hoveredLink.predTag} - {hoveredLink.predDesc}
+                                    </span>
+                                </div>
+                                <span className="text-amber-400 font-black text-sm">➔</span>
+                                <div className="flex items-center gap-1.5 font-bold text-xs">
+                                    <span className="text-emerald-400">Sucessora:</span>
+                                    <span className="bg-emerald-900/90 text-emerald-100 px-2 py-0.5 rounded border border-emerald-500/40 text-[11px] font-mono">
+                                        {hoveredLink.succTag} - {hoveredLink.succDesc}
+                                    </span>
+                                </div>
+                                {hoveredLink.isConflict && (
+                                    <span className="bg-red-900/95 text-red-100 text-[10px] font-bold px-2 py-0.5 rounded border border-red-400/60 flex items-center gap-1 animate-pulse">
+                                        ⚠️ Conflito de Horário!
+                                    </span>
+                                )}
+                            </div>
                         )}
 
                         {/* Activity Rows */}
@@ -1175,34 +1290,55 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                             const isSelectedPred = selectedSourceActivity?.id === activity.id;
                             const isCandidate = !!selectedSourceActivity && !isSelectedPred && !!activity.idMp && activity.idMp.trim().toLowerCase() === selectedSourceActivity.idMp.trim().toLowerCase();
 
+                            const isHoveredPred = hoveredLink?.predId === activity.id;
+                            const isHoveredSucc = hoveredLink?.succId === activity.id;
+                            const isHoveredLinked = isHoveredPred || isHoveredSucc;
+                            const isDimmed = !!hoveredLink && !isHoveredLinked;
+
                             return (
                                 <div 
                                     key={activity.id} 
                                     style={{ height: `${rowHeight}px` }} 
-                                    className={`flex items-center border-b border-gray-100 dark:border-gray-700/50 relative hover:bg-blue-50/50 dark:hover:bg-gray-700/30 transition-colors z-10 ${
+                                    className={`flex items-center border-b border-gray-100 dark:border-gray-700/50 relative hover:bg-blue-50/50 dark:hover:bg-gray-700/30 transition-all duration-150 z-10 ${
                                         isSelectedPred 
                                             ? 'bg-indigo-50/80 dark:bg-indigo-950/50' 
-                                            : isCandidate
-                                                ? 'bg-amber-50/40 dark:bg-amber-950/20'
-                                                : index % 2 === 0 ? 'bg-transparent' : 'bg-gray-50/30 dark:bg-gray-800/30'
+                                            : isHoveredPred
+                                                ? 'bg-indigo-50/90 dark:bg-indigo-950/60 ring-1 ring-inset ring-indigo-400/40'
+                                                : isHoveredSucc
+                                                    ? 'bg-emerald-50/90 dark:bg-emerald-950/60 ring-1 ring-inset ring-emerald-400/40'
+                                                    : isCandidate
+                                                        ? 'bg-amber-50/40 dark:bg-amber-950/20'
+                                                        : isDimmed
+                                                            ? 'opacity-30'
+                                                            : index % 2 === 0 ? 'bg-transparent' : 'bg-gray-50/30 dark:bg-gray-800/30'
                                     }`}
                                 >
                                     {/* Y Axis Label (Sticky Left) */}
                                     <div 
                                         style={{ width: `${yAxisWidth}px` }}
-                                        className={`flex-shrink-0 h-full px-3 sticky left-0 backdrop-blur-sm border-r flex flex-col justify-center cursor-pointer z-20 group transition-colors ${
+                                        className={`flex-shrink-0 h-full px-3 sticky left-0 backdrop-blur-sm border-r flex flex-col justify-center cursor-pointer z-20 group transition-all duration-150 ${
                                             isSelectedPred
                                                 ? 'bg-indigo-100 dark:bg-indigo-950/90 border-r-indigo-500 border-l-4 border-l-indigo-600 dark:border-l-indigo-400 ring-2 ring-indigo-500/40'
-                                                : isCandidate
-                                                    ? 'bg-amber-50/90 dark:bg-amber-950/80 border-r-amber-400 hover:bg-amber-100/90 dark:hover:bg-amber-900/60'
-                                                    : 'bg-white/90 dark:bg-gray-800/90 border-r-gray-200 dark:border-r-gray-600'
+                                                : isHoveredPred
+                                                    ? 'bg-indigo-100/95 dark:bg-indigo-950/95 border-r-indigo-500 border-l-4 border-l-indigo-600 ring-2 ring-indigo-500/50 shadow-md'
+                                                    : isHoveredSucc
+                                                        ? 'bg-emerald-100/95 dark:bg-emerald-950/95 border-r-emerald-500 border-l-4 border-l-emerald-600 ring-2 ring-emerald-500/50 shadow-md'
+                                                        : isCandidate
+                                                            ? 'bg-amber-50/90 dark:bg-amber-950/80 border-r-amber-400 hover:bg-amber-100/90 dark:hover:bg-amber-900/60'
+                                                            : isDimmed
+                                                                ? 'bg-white/60 dark:bg-gray-800/60 border-r-gray-200 dark:border-r-gray-700 opacity-40'
+                                                                : 'bg-white/90 dark:bg-gray-800/90 border-r-gray-200 dark:border-r-gray-600'
                                         }`}
                                         title={
                                             isSelectedPred
                                                 ? '🔗 Predecessora selecionada (clique para cancelar ou escolha a sucessora)'
-                                                : isCandidate
-                                                    ? '👉 Clique para vincular como Sucessora desta atividade'
-                                                    : `#${sequenceMap.get(activity.id) || ''} ${activity.tag} - ${activity.descricao} (Ctrl+Clique para selecionar como predecessora)`
+                                                : isHoveredPred
+                                                    ? '🔗 Predecessora do vínculo destacado'
+                                                    : isHoveredSucc
+                                                        ? '🔗 Sucessora do vínculo destacado'
+                                                        : isCandidate
+                                                            ? '👉 Clique para vincular como Sucessora desta atividade'
+                                                            : `#${sequenceMap.get(activity.id) || ''} ${activity.tag} - ${activity.descricao} (Ctrl+Clique para selecionar como predecessora)`
                                         }
                                         onClick={(e) => handleActivityClick(activity, e)}
                                     >
@@ -1212,7 +1348,11 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                                     <span className={`font-mono text-[10px] font-bold px-1 rounded flex-shrink-0 ${
                                                         isSelectedPred
                                                             ? 'bg-indigo-700 text-white'
-                                                            : 'text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950'
+                                                            : isHoveredPred
+                                                                ? 'bg-indigo-600 text-white'
+                                                                : isHoveredSucc
+                                                                    ? 'bg-emerald-600 text-white'
+                                                                    : 'text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950'
                                                     }`}>
                                                         #{sequenceMap.get(activity.id)}
                                                     </span>
@@ -1220,7 +1360,11 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                                 <p className={`font-bold truncate text-xs transition-colors ${
                                                     isSelectedPred
                                                         ? 'text-indigo-950 dark:text-indigo-200'
-                                                        : 'text-gray-800 dark:text-gray-200 group-hover:text-primary-600'
+                                                        : isHoveredPred
+                                                            ? 'text-indigo-950 dark:text-indigo-100 font-extrabold'
+                                                            : isHoveredSucc
+                                                                ? 'text-emerald-950 dark:text-emerald-100 font-extrabold'
+                                                                : 'text-gray-800 dark:text-gray-200 group-hover:text-primary-600'
                                                 }`}>
                                                     {activity.descricao}
                                                 </p>
@@ -1229,6 +1373,16 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                                 {isSelectedPred && (
                                                     <span className="text-[8px] font-black uppercase text-indigo-700 dark:text-indigo-300 bg-indigo-200 dark:bg-indigo-900 px-1 py-0.2 rounded animate-pulse">
                                                         Pred
+                                                    </span>
+                                                )}
+                                                {isHoveredPred && !isSelectedPred && (
+                                                    <span className="text-[8px] font-black uppercase text-indigo-800 dark:text-indigo-200 bg-indigo-200 dark:bg-indigo-900 px-1.5 py-0.5 rounded shadow-xs border border-indigo-400/50 animate-pulse">
+                                                        🔗 Pred
+                                                    </span>
+                                                )}
+                                                {isHoveredSucc && (
+                                                    <span className="text-[8px] font-black uppercase text-emerald-800 dark:text-emerald-200 bg-emerald-200 dark:bg-emerald-900 px-1.5 py-0.5 rounded shadow-xs border border-emerald-400/50 animate-pulse">
+                                                        🔗 Succ
                                                     </span>
                                                 )}
                                                 {isCandidate && (
@@ -1258,6 +1412,9 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                             isLinkingMode={!!selectedSourceActivity}
                                             isSameMpAsSelected={isCandidate}
                                             isCtrlHeld={isCtrlHeld}
+                                            isHoveredPredecessor={isHoveredPred}
+                                            isHoveredSuccessor={isHoveredSucc}
+                                            isDimmed={isDimmed}
                                         />
                                     </div>
                                 </div>
