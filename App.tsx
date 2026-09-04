@@ -582,6 +582,24 @@ const App: React.FC = () => {
         }
         setEditingActivity(null);
     };
+
+    const handleBatchUpdateActivities = async (updatedList: Activity[]) => {
+        if (!updatedList || updatedList.length === 0) return;
+        const updatedMap = new Map(updatedList.map(a => [a.id, a]));
+        const newActivities = activities.map(act => updatedMap.get(act.id) || act);
+
+        setActivities(newActivities);
+
+        for (const act of updatedList) {
+            await saveActivityToSupabase(act);
+        }
+
+        addAuditLog(
+            "EDITAR_LOTE", 
+            `Moveu ${updatedList.length} atividade(s) em bloco no Gantt mantendo espaçamento`, 
+            updatedList.map(a => a.id).join(',')
+        );
+    };
     
     const handleRecalculateSchedule = async (targetMpId?: string) => {
         const { updatedActivities, changedCount } = cascadeScheduleForActivities(activities, targetMpId);
@@ -1070,7 +1088,7 @@ const App: React.FC = () => {
             case 'list': return <ActivityListView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} customStatusLabels={statusLabels} onRecalculateSchedule={() => handleRecalculateSchedule(filters.idMp)} />;
             case 'board': return <ActivityBoardView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'calendar': return <ActivityCalendarView activities={filteredAndSortedActivities} onEdit={openEditModal} customStatusLabels={statusLabels} onDateChange={handleActivityDateChange} userRole={user?.role} />;
-            case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateActivity={handleUpdateActivity} onRecalculateSchedule={() => handleRecalculateSchedule(filters.idMp)} />;
+            case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateActivity={handleUpdateActivity} onBatchUpdateActivities={handleBatchUpdateActivities} onRecalculateSchedule={() => handleRecalculateSchedule(filters.idMp)} />;
             case 'scurve': return <SCurveView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onUpdateActivity={handleUpdateActivity} customStatusLabels={statusLabels} />;
             case 'report': return <ReportView activities={filteredAndSortedActivities} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'audit': return <AuditLogView logs={auditLogs} />;

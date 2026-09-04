@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import type { Activity } from '../types';
 import { ActivityStatus } from '../types';
@@ -14,6 +13,7 @@ interface ActivityGanttViewProps {
     activities: Activity[];
     onEdit: (activity: Activity) => void;
     onUpdateActivity?: (activity: Activity) => void;
+    onBatchUpdateActivities?: (activities: Activity[]) => void;
     onRecalculateSchedule?: () => void;
 }
 
@@ -94,6 +94,11 @@ interface GanttBarProps {
     onClick: (e?: React.MouseEvent) => void;
     onUpdateActivity?: (activity: Activity) => void;
     scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+    isSelected?: boolean;
+    isSelectedCount?: number;
+    isGroupDragging?: boolean;
+    groupDragDeltaMs?: number;
+    onStartGroupDrag?: (e: React.MouseEvent | React.TouchEvent, activity: Activity) => void;
     isSelectedPredecessor?: boolean;
     isLinkingMode?: boolean;
     isSameMpAsSelected?: boolean;
@@ -111,6 +116,11 @@ const GanttBar: React.FC<GanttBarProps> = ({
     onClick, 
     onUpdateActivity,
     scrollContainerRef,
+    isSelected = false,
+    isSelectedCount = 0,
+    isGroupDragging = false,
+    groupDragDeltaMs = 0,
+    onStartGroupDrag,
     isSelectedPredecessor = false,
     isLinkingMode = false,
     isSameMpAsSelected = false,
@@ -142,6 +152,12 @@ const GanttBar: React.FC<GanttBarProps> = ({
 
     const handleStartDrag = (e: React.MouseEvent | React.TouchEvent, type: 'move' | 'resize-left' | 'resize-right') => {
         e.stopPropagation();
+
+        // If user initiates move on an item that is part of a multi-selection, delegate to group drag
+        if (type === 'move' && isSelected && isSelectedCount > 1 && onStartGroupDrag) {
+            onStartGroupDrag(e, activity);
+            return;
+        }
 
         isCtrlClickedRef.current = ('ctrlKey' in e && (e.ctrlKey || e.metaKey)) || isCtrlHeld;
 
@@ -274,8 +290,18 @@ const GanttBar: React.FC<GanttBarProps> = ({
         window.addEventListener('touchend', handleTouchEnd);
     };
 
-    const displayStartMs = isDragging ? tempStartMs : actStartMs;
-    const displayEndMs = isDragging ? tempEndMs : actEndMs;
+    // Active coordinates calculation
+    const isBeingGroupMoved = isSelected && isGroupDragging;
+    const displayStartMs = isDragging 
+        ? tempStartMs 
+        : isBeingGroupMoved 
+            ? actStartMs + groupDragDeltaMs 
+            : actStartMs;
+    const displayEndMs = isDragging 
+        ? tempEndMs 
+        : isBeingGroupMoved 
+            ? actEndMs + groupDragDeltaMs 
+            : actEndMs;
 
     const pxPerMs = hourWidth / 3600000;
     const diffMs = displayStartMs - chartStart;
@@ -300,14 +326,26 @@ const GanttBar: React.FC<GanttBarProps> = ({
         linkingEffectClass = 'opacity-30 grayscale-[30%]';
     }
 
+    // Selected state classes
+    let selectedGroupClass = '';
+    if (isSelected) {
+        if (isGroupDragging) {
+            selectedGroupClass = 'ring-3 ring-blue-400 z-50 cursor-grabbing shadow-2xl brightness-110 opacity-95 scale-[1.01]';
+        } else {
+            selectedGroupClass = 'ring-2 ring-blue-500 ring-offset-1 ring-offset-white dark:ring-offset-gray-900 z-30 shadow-lg brightness-105';
+        }
+    }
+
     return (
         <div 
-            className={`absolute top-1/2 -translate-y-1/2 rounded-md flex items-center text-[10px] font-medium text-white shadow-sm ${barColor} select-none group transition-all duration-150 ${
+            className={`gantt-bar-item absolute top-1/2 -translate-y-1/2 rounded-md flex items-center text-[10px] font-medium text-white shadow-sm ${barColor} select-none group transition-all duration-150 ${
                 isDragging 
                     ? 'ring-2 ring-blue-400 z-50 cursor-grabbing shadow-2xl opacity-95 scale-[1.01]' 
-                    : isSelectedPredecessor || isHoveredPredecessor || isHoveredSuccessor
-                        ? linkingEffectClass
-                        : 'cursor-grab hover:ring-1 hover:ring-white hover:z-20 opacity-90 hover:opacity-100 ' + linkingEffectClass
+                    : isSelected 
+                        ? selectedGroupClass
+                        : isSelectedPredecessor || isHoveredPredecessor || isHoveredSuccessor
+                            ? linkingEffectClass
+                            : 'cursor-grab hover:ring-1 hover:ring-white hover:z-20 opacity-90 hover:opacity-100 ' + linkingEffectClass
             }`}
             style={{ 
                 left: `${left}px`, 
@@ -317,7 +355,7 @@ const GanttBar: React.FC<GanttBarProps> = ({
             onMouseDown={(e) => handleStartDrag(e, 'move')}
             onTouchStart={(e) => handleStartDrag(e, 'move')}
             title={
-                !isDragging 
+                !isDragging && !isGroupDragging
                     ? isSelectedPredecessor
                         ? `🔗 PREDECESSORA SELECIONADA\nClique em outra atividade para vinculá-la como SUCESSORA (ou pressione ESC)`
                         : isHoveredPredecessor
@@ -326,7 +364,9 @@ const GanttBar: React.FC<GanttBarProps> = ({
                                 ? `🔗 ATIVIDADE SUCESSORA\n${activity.tag} - ${activity.descricao}`
                                 : isLinkingMode && isSameMpAsSelected
                                     ? `👉 Clique para definir como SUCESSORA desta MP`
-                                    : `${activity.tag} - ${activity.descricao}\n${new Date(activity.horaInicio).toLocaleString()} - ${new Date(activity.horaFim).toLocaleString()}\nAvanço: ${progressPercent}%\n(Ctrl+Clique para selecionar como predecessora / Arraste para mover)`
+                                    : isSelected
+                                        ? `📦 ${activity.tag} - ${activity.descricao} [SELECIONADA NO GRUPO]\nArraste qualquer barra selecionada para mover todas em bloco mantendo o espaçamento`
+                                        : `${activity.tag} - ${activity.descricao}\n${new Date(activity.horaInicio).toLocaleString()} - ${new Date(activity.horaFim).toLocaleString()}\nAvanço: ${progressPercent}%\n(Ctrl+Clique para vincular / Arraste para mover)`
                     : undefined
             }
         >
@@ -343,7 +383,7 @@ const GanttBar: React.FC<GanttBarProps> = ({
                 onMouseDown={(e) => handleStartDrag(e, 'resize-left')}
                 onTouchStart={(e) => handleStartDrag(e, 'resize-left')}
                 className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40 rounded-l-md flex items-center justify-center transition-opacity z-10"
-                title="Arrastar para alterar horário de início"
+                title="Arrastar para alterar horário de início desta atividade"
             >
                 <div className="w-[2px] h-3.5 bg-white/90 rounded-full" />
             </div>
@@ -351,6 +391,11 @@ const GanttBar: React.FC<GanttBarProps> = ({
             {/* Label */}
             {width > 35 && (
                 <span className="truncate pointer-events-none px-2 font-semibold z-10 flex items-center gap-1">
+                    {isSelected && (
+                        <span className="bg-blue-900/90 text-blue-100 text-[8px] font-black px-1 rounded flex-shrink-0 border border-blue-400/60 shadow-xs">
+                            ✓
+                        </span>
+                    )}
                     {isSelectedPredecessor && (
                         <span className="bg-indigo-950/90 text-indigo-200 text-[8px] font-black px-1 rounded flex-shrink-0 uppercase tracking-tighter border border-indigo-400/50">
                             🔗 Pred
@@ -378,12 +423,12 @@ const GanttBar: React.FC<GanttBarProps> = ({
                 onMouseDown={(e) => handleStartDrag(e, 'resize-right')}
                 onTouchStart={(e) => handleStartDrag(e, 'resize-right')}
                 className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40 rounded-r-md flex items-center justify-center transition-opacity z-10"
-                title="Arrastar para alterar horário de fim"
+                title="Arrastar para alterar horário de fim desta atividade"
             >
                 <div className="w-[2px] h-3.5 bg-white/90 rounded-full" />
             </div>
 
-            {/* Live Dragging Floating Tooltip */}
+            {/* Live Individual Dragging Floating Tooltip */}
             {isDragging && (
                 <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-gray-900/95 text-white dark:bg-gray-100/95 dark:text-gray-900 text-[11px] font-extrabold py-1.5 px-3 rounded-lg shadow-2xl whitespace-nowrap z-50 pointer-events-none flex items-center gap-2 border border-blue-500/50 backdrop-blur-md">
                     <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span>
@@ -412,6 +457,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
     activities, 
     onEdit, 
     onUpdateActivity,
+    onBatchUpdateActivities,
     onRecalculateSchedule
 }) => {
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -436,6 +482,26 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
     const [isCtrlHeld, setIsCtrlHeld] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' | 'info'; id: number } | null>(null);
     const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Multi-Selection State for Group Dragging
+    const [selectedActivityIds, setSelectedActivityIds] = useState<Set<string>>(new Set());
+    const lastClickedIndexRef = useRef<number | null>(null);
+
+    // Group Dragging Real-time State
+    const [isGroupDragging, setIsGroupDragging] = useState(false);
+    const [groupDragDeltaMs, setGroupDragDeltaMs] = useState(0);
+    const groupDragDeltaRef = useRef(0);
+
+    // Marquee Selection Box State
+    const [selectionBox, setSelectionBox] = useState<{
+        startX: number;
+        startY: number;
+        currentX: number;
+        currentY: number;
+    } | null>(null);
+    const [isSelectingBox, setIsSelectingBox] = useState(false);
+    const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
+    const chartBodyRef = useRef<HTMLDivElement>(null);
 
     const [yAxisWidth, setYAxisWidth] = useState<number>(() => {
         const saved = localStorage.getItem('gantt_y_axis_width');
@@ -465,9 +531,14 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
     // Global keyboard listener for ESC and Ctrl/Cmd keys
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && selectedSourceActivity) {
-                setSelectedSourceActivity(null);
-                showToast('Seleção de predecessora cancelada.', 'info');
+            if (e.key === 'Escape') {
+                if (selectedSourceActivity) {
+                    setSelectedSourceActivity(null);
+                    showToast('Seleção de predecessora cancelada.', 'info');
+                } else if (selectedActivityIds.size > 0) {
+                    setSelectedActivityIds(new Set());
+                    showToast('Seleção de atividades limpa.', 'info');
+                }
             }
             if (e.key === 'Control' || e.key === 'Meta') {
                 setIsCtrlHeld(true);
@@ -486,7 +557,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
-    }, [selectedSourceActivity, showToast]);
+    }, [selectedSourceActivity, selectedActivityIds, showToast]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -719,9 +790,81 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
         return links;
     }, [showDependencies, sortedActivities, chartStart, pxPerMs, rowHeight]);
 
+    // Selection toggle helper
+    const toggleActivitySelection = useCallback((activityId: string, isShift: boolean = false, index?: number) => {
+        setSelectedActivityIds(prev => {
+            const next = new Set(prev);
+            if (isShift && lastClickedIndexRef.current !== null && index !== undefined) {
+                const start = Math.min(lastClickedIndexRef.current, index);
+                const end = Math.max(lastClickedIndexRef.current, index);
+                for (let i = start; i <= end; i++) {
+                    next.add(sortedActivities[i].id);
+                }
+            } else {
+                if (next.has(activityId)) {
+                    next.delete(activityId);
+                } else {
+                    next.add(activityId);
+                }
+            }
+            return next;
+        });
+        if (index !== undefined) {
+            lastClickedIndexRef.current = index;
+        }
+    }, [sortedActivities]);
+
+    const handleSelectAll = useCallback(() => {
+        if (selectedActivityIds.size === activities.length) {
+            setSelectedActivityIds(new Set());
+        } else {
+            setSelectedActivityIds(new Set(activities.map(a => a.id)));
+        }
+    }, [activities, selectedActivityIds]);
+
+    // Quick Shift for Selected Group
+    const handleShiftSelected = useCallback((shiftMs: number) => {
+        if (selectedActivityIds.size === 0) return;
+        const selectedList = activities.filter(a => selectedActivityIds.has(a.id));
+        if (selectedList.length === 0) return;
+
+        const updatedList: Activity[] = selectedList.map(act => {
+            const origStartMs = new Date(act.horaInicio).getTime();
+            const origEndMs = new Date(act.horaFim).getTime();
+            const durationMs = origEndMs - origStartMs;
+            const newStartMs = origStartMs + shiftMs;
+            const newEndMs = origEndMs + shiftMs;
+            const newStartDate = new Date(newStartMs);
+            const newShift = calculateShiftForDate(newStartDate);
+            const totalMins = Math.round(durationMs / 60000);
+            const h = Math.floor(totalMins / 60);
+            const m = totalMins % 60;
+            const duracaoStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+
+            return {
+                ...act,
+                horaInicio: newStartDate.toISOString(),
+                horaFim: new Date(newEndMs).toISOString(),
+                duracao: duracaoStr,
+                turno: act.turno === 'ADM' ? 'ADM' : (newShift as any)
+            };
+        });
+
+        if (onBatchUpdateActivities) {
+            onBatchUpdateActivities(updatedList);
+        } else if (onUpdateActivity) {
+            updatedList.forEach(a => onUpdateActivity(a));
+        }
+
+        const hours = Math.abs(shiftMs) / 3600000;
+        const sign = shiftMs > 0 ? '+' : '-';
+        showToast(`✅ ${selectedList.length} atividade(s) deslocada(s) em ${sign}${hours}h mantendo o espaçamento!`, 'success');
+    }, [selectedActivityIds, activities, onBatchUpdateActivities, onUpdateActivity, showToast]);
+
     // Activity Click & Dependency Linking Handler
     const handleActivityClick = useCallback((clickedAct: Activity, e?: React.MouseEvent) => {
         const isCtrl = !!(e && (e.ctrlKey || e.metaKey)) || isCtrlHeld;
+        const isShift = !!(e && e.shiftKey);
 
         // 1. If currently in linking mode (or an activity is already selected as source)
         if (selectedSourceActivity) {
@@ -789,7 +932,14 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
             return;
         }
 
-        // 2. If Ctrl was held (or clicked while Ctrl is pressed)
+        // 2. If Shift was held: Toggle multi-selection for group dragging
+        if (isShift) {
+            const idx = sortedActivities.findIndex(a => a.id === clickedAct.id);
+            toggleActivitySelection(clickedAct.id, true, idx);
+            return;
+        }
+
+        // 3. If Ctrl was held (or clicked while Ctrl is pressed): Predecessor Linking
         if (isCtrl) {
             setSelectedSourceActivity(clickedAct);
             const tagOrDesc = clickedAct.tag || clickedAct.descricao;
@@ -797,9 +947,224 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
             return;
         }
 
-        // 3. Default: normal click opens edit modal
+        // 4. Default: normal click opens edit modal
         onEdit(clickedAct);
-    }, [selectedSourceActivity, isCtrlHeld, onUpdateActivity, onEdit, showToast]);
+    }, [selectedSourceActivity, isCtrlHeld, sortedActivities, toggleActivitySelection, onUpdateActivity, onEdit, showToast]);
+
+    // Handle Group Dragging Coordinates & Dispatch
+    const handleStartGroupDrag = useCallback((e: React.MouseEvent | React.TouchEvent, clickedActivity: Activity) => {
+        e.stopPropagation();
+
+        const activeSelection = new Set(selectedActivityIds);
+        if (!activeSelection.has(clickedActivity.id)) {
+            activeSelection.add(clickedActivity.id);
+            setSelectedActivityIds(activeSelection);
+        }
+
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+        const initialMouseX = clientX;
+        const initialScrollLeft = containerRef.current?.scrollLeft || 0;
+
+        // Capture initial times for all selected activities
+        const initialPositions = new Map<string, { origStartMs: number; origEndMs: number; durationMs: number; activity: Activity }>();
+        activities.forEach(act => {
+            if (activeSelection.has(act.id)) {
+                const startMs = new Date(act.horaInicio).getTime();
+                const endMs = new Date(act.horaFim).getTime();
+                initialPositions.set(act.id, {
+                    origStartMs: startMs,
+                    origEndMs: endMs,
+                    durationMs: endMs - startMs,
+                    activity: act,
+                });
+            }
+        });
+
+        let hasMoved = false;
+        document.body.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+
+        const updatePosition = (currentClientX: number) => {
+            const currentScrollLeft = containerRef.current?.scrollLeft || 0;
+            const deltaX = (currentClientX + currentScrollLeft) - (initialMouseX + initialScrollLeft);
+
+            if (!hasMoved && Math.abs(deltaX) > 3) {
+                hasMoved = true;
+                setIsGroupDragging(true);
+            }
+
+            if (!hasMoved) return;
+
+            const pxPerMs = hourWidth / 3600000;
+            const rawDeltaMs = deltaX / pxPerMs;
+
+            // Snap to 15 minutes (900,000 ms)
+            const SNAP_MS = 15 * 60 * 1000;
+            const snappedDeltaMs = Math.round(rawDeltaMs / SNAP_MS) * SNAP_MS;
+
+            setGroupDragDeltaMs(snappedDeltaMs);
+            groupDragDeltaRef.current = snappedDeltaMs;
+
+            // Auto-scroll container when near edges
+            if (containerRef.current) {
+                const rect = containerRef.current.getBoundingClientRect();
+                if (currentClientX > rect.right - 80) {
+                    containerRef.current.scrollLeft += 20;
+                } else if (currentClientX < rect.left + yAxisWidth + 40) {
+                    containerRef.current.scrollLeft -= 20;
+                }
+            }
+        };
+
+        const handleMouseMove = (moveEv: MouseEvent) => {
+            moveEv.preventDefault();
+            updatePosition(moveEv.clientX);
+        };
+
+        const handleTouchMove = (touchEv: TouchEvent) => {
+            if (touchEv.touches.length > 0) {
+                updatePosition(touchEv.touches[0].clientX);
+            }
+        };
+
+        const finishDrag = () => {
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('touchmove', handleTouchMove);
+            window.removeEventListener('touchend', handleTouchEnd);
+
+            const finalDeltaMs = groupDragDeltaRef.current;
+            setIsGroupDragging(false);
+            setGroupDragDeltaMs(0);
+            groupDragDeltaRef.current = 0;
+
+            if (hasMoved && finalDeltaMs !== 0) {
+                const updatedList: Activity[] = [];
+                initialPositions.forEach(({ origStartMs, origEndMs, durationMs, activity }) => {
+                    const newStartMs = origStartMs + finalDeltaMs;
+                    const newEndMs = origEndMs + finalDeltaMs;
+                    const newStartDate = new Date(newStartMs);
+                    const newShift = calculateShiftForDate(newStartDate);
+                    const totalMins = Math.round(durationMs / 60000);
+                    const h = Math.floor(totalMins / 60);
+                    const m = totalMins % 60;
+                    const duracaoStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+
+                    updatedList.push({
+                        ...activity,
+                        horaInicio: newStartDate.toISOString(),
+                        horaFim: new Date(newEndMs).toISOString(),
+                        duracao: duracaoStr,
+                        turno: activity.turno === 'ADM' ? 'ADM' : (newShift as any),
+                    });
+                });
+
+                if (onBatchUpdateActivities) {
+                    onBatchUpdateActivities(updatedList);
+                } else if (onUpdateActivity) {
+                    updatedList.forEach(a => onUpdateActivity(a));
+                }
+
+                const hours = Math.abs(finalDeltaMs) / 3600000;
+                const sign = finalDeltaMs > 0 ? '+' : '-';
+                showToast(`✅ ${updatedList.length} atividades movidas em bloco (${sign}${hours.toFixed(1)}h) mantendo espaçamento!`, 'success');
+            }
+        };
+
+        const handleMouseUp = () => finishDrag();
+        const handleTouchEnd = () => finishDrag();
+
+        window.addEventListener('mousemove', handleMouseMove, { passive: false });
+        window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('touchmove', handleTouchMove, { passive: true });
+        window.addEventListener('touchend', handleTouchEnd);
+    }, [selectedActivityIds, activities, hourWidth, yAxisWidth, onBatchUpdateActivities, onUpdateActivity, showToast]);
+
+    // Marquee Selection Drag on Grid Body
+    const handleChartBodyMouseDown = useCallback((e: React.MouseEvent) => {
+        if (e.button !== 0) return; // Only left click
+        const target = e.target as HTMLElement;
+        if (target.closest('.gantt-bar-item') || target.closest('svg') || target.closest('button')) {
+            return;
+        }
+
+        if (!chartBodyRef.current) return;
+        const rect = chartBodyRef.current.getBoundingClientRect();
+        const startX = e.clientX - rect.left;
+        const startY = e.clientY - rect.top;
+
+        selectionStartRef.current = { x: startX, y: startY };
+        setIsSelectingBox(false);
+
+        const isModifierHeld = e.shiftKey || e.ctrlKey || e.metaKey;
+        const prevSelected = isModifierHeld ? new Set(selectedActivityIds) : new Set<string>();
+
+        const handleMouseMove = (moveEv: MouseEvent) => {
+            if (!selectionStartRef.current || !chartBodyRef.current) return;
+            const currentRect = chartBodyRef.current.getBoundingClientRect();
+            const currentX = moveEv.clientX - currentRect.left;
+            const currentY = moveEv.clientY - currentRect.top;
+
+            const deltaX = Math.abs(currentX - selectionStartRef.current.x);
+            const deltaY = Math.abs(currentY - selectionStartRef.current.y);
+
+            if (deltaX > 4 || deltaY > 4) {
+                setIsSelectingBox(true);
+                setSelectionBox({
+                    startX: selectionStartRef.current.x,
+                    startY: selectionStartRef.current.y,
+                    currentX,
+                    currentY,
+                });
+
+                const minX = Math.min(selectionStartRef.current.x, currentX);
+                const maxX = Math.max(selectionStartRef.current.x, currentX);
+                const minY = Math.min(selectionStartRef.current.y, currentY);
+                const maxY = Math.max(selectionStartRef.current.y, currentY);
+
+                const newlySelected = new Set<string>(prevSelected);
+
+                sortedActivities.forEach((act, idx) => {
+                    const rowTop = idx * rowHeight;
+                    const rowBottom = (idx + 1) * rowHeight;
+
+                    const actStartMs = new Date(act.horaInicio).getTime();
+                    const actEndMs = new Date(act.horaFim).getTime();
+                    const barLeft = (actStartMs - chartStart) * pxPerMs;
+                    const barRight = (actEndMs - chartStart) * pxPerMs;
+
+                    const verticalOverlap = maxY >= rowTop && minY <= rowBottom;
+                    const horizontalOverlap = maxX >= barLeft && minX <= barRight;
+
+                    if (verticalOverlap && horizontalOverlap) {
+                        newlySelected.add(act.id);
+                    }
+                });
+
+                setSelectedActivityIds(newlySelected);
+            }
+        };
+
+        const handleMouseUp = () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+
+            if (!isSelectingBox && selectionStartRef.current) {
+                if (!isModifierHeld) {
+                    setSelectedActivityIds(new Set());
+                }
+            }
+
+            setIsSelectingBox(false);
+            setSelectionBox(null);
+            selectionStartRef.current = null;
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    }, [selectedActivityIds, sortedActivities, chartStart, pxPerMs, rowHeight]);
 
     // Current Time Line
     const renderCurrentTimeLine = () => {
@@ -874,7 +1239,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                 </div>
             )}
 
-            {/* Floating Banner when predecessor is selected */}
+            {/* Floating Banner when Predecessor Linking is Active */}
             {selectedSourceActivity && (
                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 bg-indigo-950/95 text-white px-5 py-2.5 rounded-xl shadow-2xl border border-indigo-400/60 flex items-center gap-4 backdrop-blur-md animate-in fade-in slide-in-from-bottom-3 duration-200">
                     <div className="flex items-center gap-2">
@@ -902,6 +1267,80 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                         title="Pressione ESC ou clique para cancelar"
                     >
                         Cancelar (Esc)
+                    </button>
+                </div>
+            )}
+
+            {/* Floating Banner when Group Dragging is Live */}
+            {isGroupDragging && groupDragDeltaMs !== 0 && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-blue-950/95 text-white text-xs font-bold py-2 px-4 rounded-xl shadow-2xl border border-blue-400 flex items-center gap-3 backdrop-blur-md animate-in fade-in zoom-in-95 pointer-events-none">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping"></span>
+                    <span>Movendo {selectedActivityIds.size} atividades em bloco</span>
+                    <span className="bg-blue-600 px-2 py-0.5 rounded text-[11px] font-mono text-white shadow-xs">
+                        {groupDragDeltaMs > 0 ? `+${Math.floor(groupDragDeltaMs / 3600000)}h ${Math.round((Math.abs(groupDragDeltaMs) % 3600000) / 60000)}m` : `-${Math.floor(Math.abs(groupDragDeltaMs) / 3600000)}h ${Math.round((Math.abs(groupDragDeltaMs) % 3600000) / 60000)}m`}
+                    </span>
+                    <span className="text-[11px] text-blue-200 font-normal">
+                        (Espaçamento mantido)
+                    </span>
+                </div>
+            )}
+
+            {/* Floating Action Pill when Multiple Activities are Selected */}
+            {!selectedSourceActivity && selectedActivityIds.size > 0 && !isGroupDragging && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 bg-gray-950/95 dark:bg-gray-900/95 text-white px-4 py-2 rounded-2xl shadow-2xl border border-blue-500/60 flex items-center gap-3 backdrop-blur-md animate-in fade-in slide-in-from-bottom-3 duration-200 max-w-[95vw] flex-wrap justify-center">
+                    <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+                        <span className="font-bold text-xs bg-blue-600 text-white px-2.5 py-0.5 rounded-full shadow-xs">
+                            {selectedActivityIds.size} selecionada(s)
+                        </span>
+                    </div>
+                    <div className="text-xs text-blue-200 hidden md:inline">
+                        Arraste qualquer barra selecionada para mover o bloco mantendo espaçamentos
+                    </div>
+                    <div className="h-4 w-[1px] bg-gray-700 hidden sm:block" />
+                    <div className="flex items-center gap-1">
+                        <span className="text-[11px] text-gray-400 font-medium mr-1 hidden sm:inline">Deslocar:</span>
+                        <button
+                            type="button"
+                            onClick={() => handleShiftSelected(-24 * 3600000)}
+                            className="px-2 py-1 text-[11px] font-bold bg-gray-800 hover:bg-gray-700 rounded text-gray-200 border border-gray-700 hover:border-gray-500 transition-colors"
+                            title="Voltar 1 dia (-24h)"
+                        >
+                            -1d
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleShiftSelected(-3600000)}
+                            className="px-2 py-1 text-[11px] font-bold bg-gray-800 hover:bg-gray-700 rounded text-gray-200 border border-gray-700 hover:border-gray-500 transition-colors"
+                            title="Voltar 1 hora (-1h)"
+                        >
+                            -1h
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleShiftSelected(3600000)}
+                            className="px-2 py-1 text-[11px] font-bold bg-gray-800 hover:bg-gray-700 rounded text-gray-200 border border-gray-700 hover:border-gray-500 transition-colors"
+                            title="Avançar 1 hora (+1h)"
+                        >
+                            +1h
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleShiftSelected(24 * 3600000)}
+                            className="px-2 py-1 text-[11px] font-bold bg-gray-800 hover:bg-gray-700 rounded text-gray-200 border border-gray-700 hover:border-gray-500 transition-colors"
+                            title="Avançar 1 dia (+24h)"
+                        >
+                            +1d
+                        </button>
+                    </div>
+                    <div className="h-4 w-[1px] bg-gray-700" />
+                    <button
+                        type="button"
+                        onClick={() => setSelectedActivityIds(new Set())}
+                        className="px-2.5 py-1 text-xs font-bold bg-white/10 hover:bg-white/20 text-gray-200 rounded-md transition-colors"
+                        title="Pressione ESC ou clique para desmarcar todas"
+                    >
+                        Limpar (Esc)
                     </button>
                 </div>
             )}
@@ -947,6 +1386,25 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                         <span className="font-semibold text-indigo-600 dark:text-indigo-400">🔗 Vínculos ({dependencyLinks.length})</span>
                     </label>
 
+                    {/* Group Selection Badge / Control */}
+                    <button
+                        type="button"
+                        onClick={handleSelectAll}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all ${
+                            selectedActivityIds.size > 0 
+                                ? 'bg-blue-100 text-blue-900 border-blue-300 dark:bg-blue-950/80 dark:text-blue-200 dark:border-blue-700 shadow-sm'
+                                : 'bg-white/80 dark:bg-gray-700/80 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                        }`}
+                        title="Clique e arraste com o mouse na área do gráfico para selecionar um grupo em retângulo, ou marque os checkboxes"
+                    >
+                        <span>📦</span>
+                        <span>
+                            {selectedActivityIds.size > 0 
+                                ? `${selectedActivityIds.size} selecionadas (Arraste p/ Mover)` 
+                                : 'Seleção em Grupo (Arraste na Grade)'}
+                        </span>
+                    </button>
+
                     {/* Quick Link Badge / Toggle Indicator */}
                     <div 
                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all ${
@@ -979,9 +1437,9 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                         </button>
                     )}
 
-                    <div className="hidden lg:flex items-center space-x-1.5 text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-md border border-blue-200/60 dark:border-blue-800/60">
+                    <div className="hidden xl:flex items-center space-x-1.5 text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-md border border-blue-200/60 dark:border-blue-800/60">
                         <span className="font-bold">💡 Dica:</span>
-                        <span>Segure Ctrl e clique em uma atividade, depois clique em outra para vincular como sucessora.</span>
+                        <span>Selecione múltiplas atividades (arrastando com o mouse na grade ou clicando) e arraste qualquer uma para mover todas mantendo o espaçamento!</span>
                     </div>
                 </div>
                 
@@ -998,224 +1456,281 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                 <div className="relative inline-block" style={{ minWidth: '100%' }}>
                     
                     {/* Header Container (Sticky) */}
-                    <div className="sticky top-0 z-30 bg-gray-100/90 dark:bg-gray-700/90 shadow-sm backdrop-blur-sm">
+                    <div className="sticky top-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md shadow-xs border-b border-gray-200 dark:border-gray-700">
                         
                         {/* Row 1: Days */}
-                        <div className="flex border-b border-gray-300 dark:border-gray-600">
-                            {/* Empty corner for Y axis */}
+                        <div className="flex border-b border-gray-200 dark:border-gray-700">
+                            {/* Y Axis Header Corner */}
                             <div 
                                 style={{ width: `${yAxisWidth}px` }} 
-                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 z-40 backdrop-blur-sm relative"
+                                className="flex-shrink-0 sticky left-0 z-50 bg-gray-100/95 dark:bg-gray-800/95 border-r border-gray-200 dark:border-gray-700 p-2 font-bold text-xs flex items-center justify-between text-gray-700 dark:text-gray-300"
                             >
-                                <div 
-                                    onMouseDown={handleMouseDown}
-                                    className="absolute right-0 top-0 bottom-0 w-3 -mr-1.5 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-600/60 z-50 transition-colors"
-                                    title="Arrastar para redimensionar a coluna de atividades"
-                                />
-                            </div>
-                            
-                            {/* Days Loop */}
-                            {days.map(day => (
-                                <div 
-                                    key={day.toISOString()}
-                                    style={{ width: `${24 * hourWidth}px` }}
-                                    className="flex-shrink-0 text-center text-xs font-bold text-gray-700 dark:text-gray-200 border-r border-gray-300 dark:border-gray-600 py-1 bg-gray-200/80 dark:bg-gray-600/80 box-border"
-                                >
-                                    {day.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={handleSelectAll}
+                                        className={`w-4 h-4 rounded flex items-center justify-center text-[10px] transition-all ${
+                                            selectedActivityIds.size === activities.length && activities.length > 0
+                                                ? 'bg-blue-600 text-white font-bold'
+                                                : selectedActivityIds.size > 0
+                                                    ? 'bg-blue-400 text-white font-bold'
+                                                    : 'border border-gray-300 dark:border-gray-600 hover:border-blue-400 bg-white/50 dark:bg-gray-700/50 text-transparent'
+                                        }`}
+                                        title={selectedActivityIds.size === activities.length ? "Desmarcar todas" : "Selecionar todas as atividades"}
+                                    >
+                                        ✓
+                                    </button>
+                                    <span>Atividade</span>
                                 </div>
-                            ))}
-                        </div>
+                                <span className="text-[10px] text-gray-400 font-normal">({activities.length})</span>
+                            </div>
 
-                        {/* Row 2: Hours */}
-                        <div className="flex border-b border-gray-300 dark:border-gray-600">
-                             <div 
-                                style={{ width: `${yAxisWidth}px` }} 
-                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 flex items-center justify-between px-3 text-xs font-bold text-gray-700 dark:text-gray-200 z-40 backdrop-blur-sm relative select-none"
-                            >
-                                <span className="truncate pr-2">Atividade</span>
-                                <div 
-                                    onMouseDown={handleMouseDown}
-                                    className="absolute right-0 top-0 bottom-0 w-3 -mr-1.5 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-600/60 z-50 flex items-center justify-center transition-colors group"
-                                    title="Arrastar para redimensionar a coluna de atividades"
-                                >
-                                    <div className="w-[2px] h-4 bg-gray-400 dark:bg-gray-500 group-hover:bg-blue-500 rounded" />
-                                </div>
-                            </div>
-                            {days.map(day => (
-                                <React.Fragment key={`hours-${day.toISOString()}`}>
-                                    {Array.from({ length: 24 }, (_, i) => (
+                            {/* Day Columns */}
+                            <div className="flex" style={{ width: `${totalChartWidth}px` }}>
+                                {days.map((day) => {
+                                    const dayWidth = 24 * hourWidth;
+                                    const dayName = day.toLocaleDateString('pt-BR', { weekday: 'short' });
+                                    const dateStr = day.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                                    const isToday = new Date().toDateString() === day.toDateString();
+
+                                    return (
                                         <div 
-                                            key={`${day.toISOString()}-${i}`}
-                                            style={{ width: `${hourWidth}px` }}
-                                            className="flex-shrink-0 text-center text-[10px] text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-600 py-0.5 bg-gray-50/50 dark:bg-gray-700/50 box-border"
+                                            key={day.getTime()} 
+                                            style={{ width: `${dayWidth}px` }}
+                                            className={`flex-shrink-0 border-r border-gray-200 dark:border-gray-700 p-1 text-center font-bold text-xs flex items-center justify-center gap-2 ${isToday ? 'bg-blue-50/80 dark:bg-blue-900/30 text-primary-600 dark:text-primary-400' : 'text-gray-700 dark:text-gray-300'}`}
                                         >
-                                            {i.toString().padStart(2, '0')}:00
+                                            <span className="capitalize">{dayName}</span>
+                                            <span>{dateStr}</span>
                                         </div>
-                                    ))}
-                                </React.Fragment>
-                            ))}
+                                    );
+                                })}
+                            </div>
                         </div>
 
-                        {/* Row 3: H x H */}
-                        <div className="flex border-b border-gray-300 dark:border-gray-600 bg-gray-100/90 dark:bg-gray-800/90">
+                        {/* Row 2: Shift Row */}
+                        <div className="flex border-b border-gray-200 dark:border-gray-700">
                             <div 
                                 style={{ width: `${yAxisWidth}px` }} 
-                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 flex items-center justify-between px-3 text-xs font-bold text-gray-700 dark:text-gray-200 z-40 backdrop-blur-sm relative select-none py-0.5"
+                                className="flex-shrink-0 sticky left-0 z-50 bg-gray-100/95 dark:bg-gray-800/95 border-r border-gray-200 dark:border-gray-700 px-2 py-1 font-semibold text-[10px] text-gray-500 dark:text-gray-400 flex items-center justify-between"
                             >
-                                <span className="truncate pr-2">H x H</span>
-                                <div 
-                                    onMouseDown={handleMouseDown}
-                                    className="absolute right-0 top-0 bottom-0 w-3 -mr-1.5 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-600/60 z-50 flex items-center justify-center transition-colors group"
-                                    title="Arrastar para redimensionar a coluna de atividades"
-                                >
-                                    <div className="w-[2px] h-4 bg-gray-400 dark:bg-gray-500 group-hover:bg-blue-500 rounded" />
-                                </div>
+                                <span>Turno Operacional</span>
+                                <span className="text-[9px] text-blue-600 dark:text-blue-400 font-bold">24 Dias</span>
                             </div>
-                            {days.map(day => (
-                                <React.Fragment key={`hxh-row-${day.toISOString()}`}>
-                                    {(['00-08', '08-16', '16-00'] as const).map(shiftKey => {
-                                        const totalMins = shiftManPowerMap.get(`${day.getTime()}_${shiftKey}`) || 0;
-                                        const blockWidth = 8 * hourWidth;
-                                        const hours = Math.floor(totalMins / 60);
-                                        const mins = Math.round(totalMins % 60);
-                                        const displayText = totalMins === 0 
-                                            ? '0h' 
-                                            : mins > 0 
-                                                ? `${hours}h ${mins}m` 
-                                                : `${hours}h`;
 
-                                        return (
-                                            <div 
-                                                key={`${day.toISOString()}-${shiftKey}-hxh`}
-                                                style={{ width: `${blockWidth}px` }}
-                                                className="flex-shrink-0 text-center text-xs py-0.5 border-r border-gray-300 dark:border-gray-600 box-border bg-amber-500/10 dark:bg-amber-400/10 text-amber-900 dark:text-amber-200 flex items-center justify-center select-none font-bold tracking-tight"
-                                                title={`H x H calculado para o turno (${shiftKey === '00-08' ? '00:00 - 08:00' : shiftKey === '08-16' ? '08:00 - 16:00' : '16:00 - 00:00'}): ${displayText}`}
-                                            >
-                                                <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-900 dark:text-amber-200 px-2 py-0.5 rounded border border-amber-300/60 dark:border-amber-700/60 text-[11px] font-extrabold shadow-2xs">
-                                                    {displayText}
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
-                                </React.Fragment>
-                            ))}
+                            <div className="flex" style={{ width: `${totalChartWidth}px` }}>
+                                {days.map((day) => {
+                                    const shiftWidth = 8 * hourWidth;
+                                    const shifts: ('00-08' | '08-16' | '16-00')[] = ['00-08', '08-16', '16-00'];
+
+                                    return (
+                                        <div key={`shifts-${day.getTime()}`} className="flex flex-shrink-0" style={{ width: `${24 * hourWidth}px` }}>
+                                            {shifts.map((shiftKey) => {
+                                                const info = getShiftInfo(day, shiftKey);
+                                                return (
+                                                    <div 
+                                                        key={shiftKey} 
+                                                        style={{ width: `${shiftWidth}px` }}
+                                                        className={`flex-shrink-0 border-r border-gray-200/80 dark:border-gray-700/80 py-0.5 px-1 text-center text-[10px] flex items-center justify-center gap-1 ${info.bg} ${info.text}`}
+                                                        title={`Turno ${info.letter} (${shiftKey}h)`}
+                                                    >
+                                                        <span>Turno {info.letter}</span>
+                                                        <span className="text-[9px] opacity-75 font-normal">({shiftKey})</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
 
-                        {/* Row 4: Turnos */}
-                        <div className="flex border-b border-gray-300 dark:border-gray-600">
+                        {/* Row 3: Shift Man-Power (H x H) Row */}
+                        <div className="flex border-b border-gray-200 dark:border-gray-700 bg-amber-50/40 dark:bg-amber-950/20">
                             <div 
                                 style={{ width: `${yAxisWidth}px` }} 
-                                className="flex-shrink-0 sticky left-0 bg-gray-200/90 dark:bg-gray-800/90 border-r border-gray-300 dark:border-gray-600 flex items-center justify-between px-3 text-xs font-bold text-gray-700 dark:text-gray-200 z-40 backdrop-blur-sm relative select-none"
+                                className="flex-shrink-0 sticky left-0 z-50 bg-amber-100/95 dark:bg-amber-900/90 border-r border-gray-200 dark:border-gray-700 px-2 py-1 font-bold text-[10px] text-amber-900 dark:text-amber-200 flex items-center justify-between"
                             >
-                                <span className="truncate pr-2">Turno</span>
-                                <div 
-                                    onMouseDown={handleMouseDown}
-                                    className="absolute right-0 top-0 bottom-0 w-3 -mr-1.5 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-600/60 z-50 flex items-center justify-center transition-colors group"
-                                    title="Arrastar para redimensionar a coluna de atividades"
-                                >
-                                    <div className="w-[2px] h-4 bg-gray-400 dark:bg-gray-500 group-hover:bg-blue-500 rounded" />
-                                </div>
+                                <span className="flex items-center gap-1">
+                                    <span>👥 H x H Turno</span>
+                                </span>
+                                <span className="text-[9px] bg-amber-200/80 dark:bg-amber-800 text-amber-900 dark:text-amber-100 px-1 rounded font-mono">hh:mm</span>
                             </div>
-                            {days.map(day => (
-                                <React.Fragment key={`shift-row-${day.toISOString()}`}>
-                                    {(['00-08', '08-16', '16-00'] as const).map(shiftKey => {
-                                        const shiftInfo = getShiftInfo(day, shiftKey);
-                                        const blockWidth = 8 * hourWidth;
-                                        return (
-                                            <div 
-                                                key={`${day.toISOString()}-${shiftKey}`}
-                                                style={{ width: `${blockWidth}px` }}
-                                                className={`flex-shrink-0 text-center text-xs py-0.5 border-r border-gray-300 dark:border-gray-600 box-border ${shiftInfo.bg} ${shiftInfo.text} flex items-center justify-center select-none font-extrabold uppercase tracking-wide`}
-                                                title={`Turno ${shiftInfo.letter} (${shiftKey === '00-08' ? '00:00 - 08:00' : shiftKey === '08-16' ? '08:00 - 16:00' : '16:00 - 00:00'})`}
-                                            >
-                                                {blockWidth >= 70 ? `Turno ${shiftInfo.letter}` : shiftInfo.letter}
-                                            </div>
-                                        );
-                                    })}
-                                </React.Fragment>
-                            ))}
+
+                            <div className="flex" style={{ width: `${totalChartWidth}px` }}>
+                                {days.map((day) => {
+                                    const shiftWidth = 8 * hourWidth;
+                                    const shifts: ('00-08' | '08-16' | '16-00')[] = ['00-08', '08-16', '16-00'];
+
+                                    return (
+                                        <div key={`hh-${day.getTime()}`} className="flex flex-shrink-0" style={{ width: `${24 * hourWidth}px` }}>
+                                            {shifts.map((shiftKey) => {
+                                                const key = `${day.getTime()}_${shiftKey}`;
+                                                const totalMins = shiftManPowerMap.get(key) || 0;
+                                                const h = Math.floor(totalMins / 60);
+                                                const m = Math.round(totalMins % 60);
+                                                const formatted = totalMins > 0 
+                                                    ? `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
+                                                    : '-';
+
+                                                return (
+                                                    <div 
+                                                        key={shiftKey} 
+                                                        style={{ width: `${shiftWidth}px` }}
+                                                        className={`flex-shrink-0 border-r border-amber-200/60 dark:border-amber-800/40 py-0.5 px-1 text-center text-[10px] font-mono font-bold flex items-center justify-center ${
+                                                            totalMins > 0 
+                                                                ? 'text-amber-900 dark:text-amber-200 bg-amber-100/40 dark:bg-amber-900/30' 
+                                                                : 'text-gray-400 dark:text-gray-500'
+                                                        }`}
+                                                        title={`Homem-Hora Total no Turno (${shiftKey}h): ${totalMins > 0 ? `${h}h ${m}m (${totalMins} minutos)` : '0h'}`}
+                                                    >
+                                                        {formatted}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Row 4: Hours */}
+                        <div className="flex">
+                            <div 
+                                style={{ width: `${yAxisWidth}px` }} 
+                                className="flex-shrink-0 sticky left-0 z-50 bg-gray-100/95 dark:bg-gray-800/95 border-r border-gray-200 dark:border-gray-700 p-1 font-semibold text-[10px] text-gray-500 dark:text-gray-400 flex items-center justify-between"
+                            >
+                                <span>Linha do Tempo</span>
+                                <span>Horário</span>
+                            </div>
+
+                            <div className="flex" style={{ width: `${totalChartWidth}px` }}>
+                                {days.map((day) => {
+                                    return (
+                                        <div key={`hours-${day.getTime()}`} className="flex flex-shrink-0">
+                                            {Array.from({ length: 24 }).map((_, hour) => (
+                                                <div 
+                                                    key={hour} 
+                                                    style={{ width: `${hourWidth}px` }}
+                                                    className="flex-shrink-0 border-r border-gray-100 dark:border-gray-700/60 p-1 text-center text-[10px] text-gray-400"
+                                                >
+                                                    {hour.toString().padStart(2, '0')}:00
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
-                    
-                    {/* Chart Body */}
-                    <div className="relative">
-                        {/* Background Grid & Current Time */}
+
+                    {/* Resizable Separator Handle */}
+                    <div 
+                        onMouseDown={handleMouseDown}
+                        style={{ left: `${yAxisWidth}px` }}
+                        className="absolute top-0 bottom-0 w-2.5 -ml-1 cursor-col-resize z-50 hover:bg-primary-500/40 transition-colors group flex items-center justify-center"
+                        title="Arrastar para redimensionar coluna de atividades"
+                    >
+                        <div className="w-[2px] h-8 bg-gray-300 dark:bg-gray-600 group-hover:bg-primary-500 rounded-full transition-colors" />
+                    </div>
+
+                    {/* Chart Body Grid and Rows */}
+                    <div 
+                        ref={chartBodyRef}
+                        onMouseDown={handleChartBodyMouseDown}
+                        className="relative" 
+                        style={{ width: `${yAxisWidth + totalChartWidth}px` }}
+                    >
+                        {/* Background Grid Lines */}
                         <div 
-                            className="absolute top-0 bottom-0" 
-                            style={{ 
-                                left: `${yAxisWidth}px`, 
-                                width: `${totalChartWidth}px`, 
-                                pointerEvents: 'none',
-                                zIndex: 0
-                            }}
+                            className="absolute top-0 bottom-0 pointer-events-none flex" 
+                            style={{ left: `${yAxisWidth}px`, width: `${totalChartWidth}px` }}
                         >
-                            {days.map((day, dayIdx) => (
-                                <React.Fragment key={`grid-${day.toISOString()}`}>
-                                    {Array.from({ length: 24 }, (_, i) => {
-                                        const isDayStart = i === 0;
-                                        const isShiftBoundary = i === 8 || i === 16;
-                                        
-                                        let lineClass = 'border-l border-dashed border-gray-200/80 dark:border-gray-700/40';
-                                        if (isDayStart) {
-                                            lineClass = 'border-l-2 border-gray-500 dark:border-gray-400 z-10';
-                                        } else if (isShiftBoundary) {
-                                            lineClass = 'border-l-2 border-dashed border-gray-400 dark:border-gray-400 z-10';
-                                        }
-
-                                        return (
-                                            <div 
-                                                key={`grid-line-${dayIdx}-${i}`}
-                                                className={`absolute top-0 bottom-0 box-border ${lineClass}`}
-                                                style={{ left: `${(dayIdx * 24 + i) * hourWidth}px` }}
-                                            ></div>
-                                        );
-                                    })}
-                                </React.Fragment>
+                            {days.map((day) => (
+                                <div key={`grid-day-${day.getTime()}`} className="flex flex-shrink-0" style={{ width: `${24 * hourWidth}px` }}>
+                                    {Array.from({ length: 24 }).map((_, hour) => (
+                                        <div 
+                                            key={`grid-hour-${hour}`} 
+                                            style={{ width: `${hourWidth}px` }}
+                                            className="flex-shrink-0 border-r border-gray-100 dark:border-gray-700/30 h-full"
+                                        />
+                                    ))}
+                                </div>
                             ))}
+                        </div>
 
+                        {/* Current Time Indicator Line */}
+                        <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: `${yAxisWidth}px`, width: `${totalChartWidth}px` }}>
                             {renderCurrentTimeLine()}
                         </div>
 
-                        {/* SVG Layer for Dependency Connector Arrows */}
+                        {/* Active Marquee Selection Rectangle */}
+                        {isSelectingBox && selectionBox && (
+                            <div
+                                className="absolute border-2 border-blue-500 bg-blue-500/15 rounded pointer-events-none z-40 backdrop-blur-[0.5px] transition-none shadow-sm"
+                                style={{
+                                    left: `${Math.min(selectionBox.startX, selectionBox.currentX)}px`,
+                                    top: `${Math.min(selectionBox.startY, selectionBox.currentY)}px`,
+                                    width: `${Math.abs(selectionBox.currentX - selectionBox.startX)}px`,
+                                    height: `${Math.abs(selectionBox.currentY - selectionBox.startY)}px`,
+                                }}
+                            >
+                                <div className="absolute -top-6 left-1 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-md whitespace-nowrap">
+                                    📦 {selectedActivityIds.size} selecionada(s)
+                                </div>
+                            </div>
+                        )}
+
+                        {/* SVG Layer for Dependency Link Arrows */}
                         {showDependencies && dependencyLinks.length > 0 && (
                             <svg 
-                                className="absolute top-0 bottom-0 pointer-events-none"
+                                className="absolute top-0 bottom-0 pointer-events-none z-20"
                                 style={{ 
                                     left: `${yAxisWidth}px`, 
                                     width: `${totalChartWidth}px`, 
-                                    height: `${sortedActivities.length * rowHeight}px`, 
-                                    zIndex: 25 
+                                    height: `${sortedActivities.length * rowHeight}px` 
                                 }}
                             >
                                 <defs>
-                                    <filter id="glow-indigo" x="-30%" y="-30%" width="160%" height="160%">
-                                        <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#6366f1" floodOpacity="0.9" />
+                                    <marker id="arrow-normal" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                                        <path d="M 0 0 L 8 4 L 0 8 z" fill="#6366f1" />
+                                    </marker>
+                                    <marker id="arrow-normal-hover" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto">
+                                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#4338ca" />
+                                    </marker>
+                                    <marker id="arrow-conflict" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                                        <path d="M 0 0 L 8 4 L 0 8 z" fill="#ef4444" />
+                                    </marker>
+                                    <marker id="arrow-conflict-hover" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto">
+                                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626" />
+                                    </marker>
+                                    <filter id="glow-indigo" x="-20%" y="-20%" width="140%" height="140%">
+                                        <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#6366f1" floodOpacity="0.8" />
                                     </filter>
-                                    <filter id="glow-conflict" x="-30%" y="-30%" width="160%" height="160%">
-                                        <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#ef4444" floodOpacity="0.9" />
+                                    <filter id="glow-conflict" x="-20%" y="-20%" width="140%" height="140%">
+                                        <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#ef4444" floodOpacity="0.9" />
                                     </filter>
-                                    <marker id="arrow-normal" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
-                                        <path d="M0,0 L0,6 L6,3 z" fill="#6366f1" />
-                                    </marker>
-                                    <marker id="arrow-normal-hover" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-                                        <path d="M0,0 L0,8 L8,4 z" fill="#4338ca" />
-                                    </marker>
-                                    <marker id="arrow-conflict" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
-                                        <path d="M0,0 L0,6 L6,3 z" fill="#ef4444" />
-                                    </marker>
-                                    <marker id="arrow-conflict-hover" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-                                        <path d="M0,0 L0,8 L8,4 z" fill="#dc2626" />
-                                    </marker>
                                 </defs>
-                                {dependencyLinks.map(link => {
-                                    const deltaX = link.toX - link.fromX;
-                                    const midX = deltaX > 20 ? link.fromX + deltaX / 2 : link.fromX + 15;
-                                    const pathD = deltaX >= 10
-                                        ? `M ${link.fromX} ${link.fromY} C ${midX} ${link.fromY}, ${midX} ${link.toY}, ${link.toX} ${link.toY}`
-                                        : `M ${link.fromX} ${link.fromY} L ${link.fromX + 10} ${link.fromY} L ${link.fromX + 10} ${link.fromY + (link.toY > link.fromY ? rowHeight / 2 : -rowHeight / 2)} L ${link.toX - 10} ${link.fromY + (link.toY > link.fromY ? rowHeight / 2 : -rowHeight / 2)} L ${link.toX - 10} ${link.toY} L ${link.toX} ${link.toY}`;
 
+                                {dependencyLinks.map((link) => {
                                     const isHovered = hoveredLink?.id === link.id;
-                                    const isAnyLinkHovered = !!hoveredLink;
+                                    const isAnyLinkHovered = hoveredLink !== null;
+
+                                    const startX = link.fromX;
+                                    const startY = link.fromY;
+                                    const endX = link.toX;
+                                    const endY = link.toY;
+
+                                    let pathD = '';
+                                    if (endX >= startX + 16) {
+                                        const midX = (startX + endX) / 2;
+                                        pathD = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
+                                    } else {
+                                        const offsetOut = 14;
+                                        const offsetBack = 16;
+                                        const rowOffset = (endY > startY ? 1 : -1) * (rowHeight / 2);
+                                        const cornerY = startY + rowOffset;
+                                        pathD = `M ${startX} ${startY} L ${startX + offsetOut} ${startY} Q ${startX + offsetOut} ${cornerY} ${startX} ${cornerY} L ${endX - offsetBack} ${cornerY} Q ${endX - offsetBack} ${endY} ${endX - 8} ${endY} L ${endX} ${endY}`;
+                                    }
 
                                     return (
                                         <g 
@@ -1224,7 +1739,6 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                             onMouseEnter={() => setHoveredLink(link)}
                                             onMouseLeave={() => setHoveredLink(prev => (prev?.id === link.id ? null : prev))}
                                         >
-                                            {/* Invisible Wide Hit Area for seamless hovering */}
                                             <path
                                                 d={pathD}
                                                 fill="none"
@@ -1232,8 +1746,6 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                                 strokeWidth={18}
                                                 className="cursor-pointer"
                                             />
-
-                                            {/* Visible Line */}
                                             <path
                                                 d={pathD}
                                                 fill="none"
@@ -1295,39 +1807,45 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                             const isHoveredLinked = isHoveredPred || isHoveredSucc;
                             const isDimmed = !!hoveredLink && !isHoveredLinked;
 
+                            const isSelectedInGroup = selectedActivityIds.has(activity.id);
+
                             return (
                                 <div 
                                     key={activity.id} 
                                     style={{ height: `${rowHeight}px` }} 
                                     className={`flex items-center border-b border-gray-100 dark:border-gray-700/50 relative hover:bg-blue-50/50 dark:hover:bg-gray-700/30 transition-all duration-150 z-10 ${
-                                        isSelectedPred 
-                                            ? 'bg-indigo-50/80 dark:bg-indigo-950/50' 
-                                            : isHoveredPred
-                                                ? 'bg-indigo-50/90 dark:bg-indigo-950/60 ring-1 ring-inset ring-indigo-400/40'
-                                                : isHoveredSucc
-                                                    ? 'bg-emerald-50/90 dark:bg-emerald-950/60 ring-1 ring-inset ring-emerald-400/40'
-                                                    : isCandidate
-                                                        ? 'bg-amber-50/40 dark:bg-amber-950/20'
-                                                        : isDimmed
-                                                            ? 'opacity-30'
-                                                            : index % 2 === 0 ? 'bg-transparent' : 'bg-gray-50/30 dark:bg-gray-800/30'
+                                        isSelectedInGroup
+                                            ? 'bg-blue-50/60 dark:bg-blue-950/40 ring-1 ring-inset ring-blue-400/50'
+                                            : isSelectedPred 
+                                                ? 'bg-indigo-50/80 dark:bg-indigo-950/50' 
+                                                : isHoveredPred
+                                                    ? 'bg-indigo-50/90 dark:bg-indigo-950/60 ring-1 ring-inset ring-indigo-400/40'
+                                                    : isHoveredSucc
+                                                        ? 'bg-emerald-50/90 dark:bg-emerald-950/60 ring-1 ring-inset ring-emerald-400/40'
+                                                        : isCandidate
+                                                            ? 'bg-amber-50/40 dark:bg-amber-950/20'
+                                                            : isDimmed
+                                                                ? 'opacity-30'
+                                                                : index % 2 === 0 ? 'bg-transparent' : 'bg-gray-50/30 dark:bg-gray-800/30'
                                     }`}
                                 >
                                     {/* Y Axis Label (Sticky Left) */}
                                     <div 
                                         style={{ width: `${yAxisWidth}px` }}
-                                        className={`flex-shrink-0 h-full px-3 sticky left-0 backdrop-blur-sm border-r flex flex-col justify-center cursor-pointer z-20 group transition-all duration-150 ${
-                                            isSelectedPred
-                                                ? 'bg-indigo-100 dark:bg-indigo-950/90 border-r-indigo-500 border-l-4 border-l-indigo-600 dark:border-l-indigo-400 ring-2 ring-indigo-500/40'
-                                                : isHoveredPred
-                                                    ? 'bg-indigo-100/95 dark:bg-indigo-950/95 border-r-indigo-500 border-l-4 border-l-indigo-600 ring-2 ring-indigo-500/50 shadow-md'
-                                                    : isHoveredSucc
-                                                        ? 'bg-emerald-100/95 dark:bg-emerald-950/95 border-r-emerald-500 border-l-4 border-l-emerald-600 ring-2 ring-emerald-500/50 shadow-md'
-                                                        : isCandidate
-                                                            ? 'bg-amber-50/90 dark:bg-amber-950/80 border-r-amber-400 hover:bg-amber-100/90 dark:hover:bg-amber-900/60'
-                                                            : isDimmed
-                                                                ? 'bg-white/60 dark:bg-gray-800/60 border-r-gray-200 dark:border-r-gray-700 opacity-40'
-                                                                : 'bg-white/90 dark:bg-gray-800/90 border-r-gray-200 dark:border-r-gray-600'
+                                        className={`flex-shrink-0 h-full px-2.5 sticky left-0 backdrop-blur-sm border-r flex flex-col justify-center cursor-pointer z-20 group transition-all duration-150 ${
+                                            isSelectedInGroup
+                                                ? 'bg-blue-100/95 dark:bg-blue-950/95 border-r-blue-500 border-l-4 border-l-blue-600 ring-1 ring-blue-500/50 shadow-xs'
+                                                : isSelectedPred
+                                                    ? 'bg-indigo-100 dark:bg-indigo-950/90 border-r-indigo-500 border-l-4 border-l-indigo-600 dark:border-l-indigo-400 ring-2 ring-indigo-500/40'
+                                                    : isHoveredPred
+                                                        ? 'bg-indigo-100/95 dark:bg-indigo-950/95 border-r-indigo-500 border-l-4 border-l-indigo-600 ring-2 ring-indigo-500/50 shadow-md'
+                                                        : isHoveredSucc
+                                                            ? 'bg-emerald-100/95 dark:bg-emerald-950/95 border-r-emerald-500 border-l-4 border-l-emerald-600 ring-2 ring-emerald-500/50 shadow-md'
+                                                            : isCandidate
+                                                                ? 'bg-amber-50/90 dark:bg-amber-950/80 border-r-amber-400 hover:bg-amber-100/90 dark:hover:bg-amber-900/60'
+                                                                : isDimmed
+                                                                    ? 'bg-white/60 dark:bg-gray-800/60 border-r-gray-200 dark:border-r-gray-700 opacity-40'
+                                                                    : 'bg-white/90 dark:bg-gray-800/90 border-r-gray-200 dark:border-r-gray-600'
                                         }`}
                                         title={
                                             isSelectedPred
@@ -1338,38 +1856,64 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                                         ? '🔗 Sucessora do vínculo destacado'
                                                         : isCandidate
                                                             ? '👉 Clique para vincular como Sucessora desta atividade'
-                                                            : `#${sequenceMap.get(activity.id) || ''} ${activity.tag} - ${activity.descricao} (Ctrl+Clique para selecionar como predecessora)`
+                                                            : `#${sequenceMap.get(activity.id) || ''} ${activity.tag} - ${activity.descricao} (Clique no checkbox para selecionar no grupo / Ctrl+Clique para predecessora)`
                                         }
                                         onClick={(e) => handleActivityClick(activity, e)}
                                     >
                                         <div className="flex items-center justify-between gap-1">
                                             <div className="flex items-center gap-1.5 min-w-0">
+                                                {/* Checkbox button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleActivitySelection(activity.id, e.shiftKey, index);
+                                                    }}
+                                                    className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] flex-shrink-0 transition-all ${
+                                                        isSelectedInGroup 
+                                                            ? 'bg-blue-600 text-white font-bold shadow-xs' 
+                                                            : 'border border-gray-300 dark:border-gray-600 hover:border-blue-400 bg-white/60 dark:bg-gray-700/60 text-transparent hover:text-gray-400'
+                                                    }`}
+                                                    title={isSelectedInGroup ? "Desmarcar do grupo" : "Selecionar para mover em grupo"}
+                                                >
+                                                    ✓
+                                                </button>
+
                                                 {sequenceMap.get(activity.id) !== undefined && (
                                                     <span className={`font-mono text-[10px] font-bold px-1 rounded flex-shrink-0 ${
-                                                        isSelectedPred
-                                                            ? 'bg-indigo-700 text-white'
-                                                            : isHoveredPred
-                                                                ? 'bg-indigo-600 text-white'
-                                                                : isHoveredSucc
-                                                                    ? 'bg-emerald-600 text-white'
-                                                                    : 'text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950'
+                                                        isSelectedInGroup
+                                                            ? 'bg-blue-700 text-white'
+                                                            : isSelectedPred
+                                                                ? 'bg-indigo-700 text-white'
+                                                                : isHoveredPred
+                                                                    ? 'bg-indigo-600 text-white'
+                                                                    : isHoveredSucc
+                                                                        ? 'bg-emerald-600 text-white'
+                                                                        : 'text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950'
                                                     }`}>
                                                         #{sequenceMap.get(activity.id)}
                                                     </span>
                                                 )}
                                                 <p className={`font-bold truncate text-xs transition-colors ${
-                                                    isSelectedPred
-                                                        ? 'text-indigo-950 dark:text-indigo-200'
-                                                        : isHoveredPred
-                                                            ? 'text-indigo-950 dark:text-indigo-100 font-extrabold'
-                                                            : isHoveredSucc
-                                                                ? 'text-emerald-950 dark:text-emerald-100 font-extrabold'
-                                                                : 'text-gray-800 dark:text-gray-200 group-hover:text-primary-600'
+                                                    isSelectedInGroup
+                                                        ? 'text-blue-950 dark:text-blue-100 font-extrabold'
+                                                        : isSelectedPred
+                                                            ? 'text-indigo-950 dark:text-indigo-200'
+                                                            : isHoveredPred
+                                                                ? 'text-indigo-950 dark:text-indigo-100 font-extrabold'
+                                                                : isHoveredSucc
+                                                                    ? 'text-emerald-950 dark:text-emerald-100 font-extrabold'
+                                                                    : 'text-gray-800 dark:text-gray-200 group-hover:text-primary-600'
                                                 }`}>
                                                     {activity.descricao}
                                                 </p>
                                             </div>
                                             <div className="flex items-center gap-1 flex-shrink-0">
+                                                {isSelectedInGroup && (
+                                                    <span className="text-[8px] font-black uppercase text-blue-700 dark:text-blue-300 bg-blue-200 dark:bg-blue-900 px-1 py-0.2 rounded shadow-xs">
+                                                        Grupo
+                                                    </span>
+                                                )}
                                                 {isSelectedPred && (
                                                     <span className="text-[8px] font-black uppercase text-indigo-700 dark:text-indigo-300 bg-indigo-200 dark:bg-indigo-900 px-1 py-0.2 rounded animate-pulse">
                                                         Pred
@@ -1394,7 +1938,7 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                             </div>
                                         </div>
                                         {!isCompact && (
-                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{activity.tag}</p>
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5 ml-5">{activity.tag}</p>
                                         )}
                                     </div>
                                     
@@ -1408,6 +1952,11 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                             onClick={(e) => handleActivityClick(activity, e)} 
                                             onUpdateActivity={onUpdateActivity}
                                             scrollContainerRef={containerRef}
+                                            isSelected={isSelectedInGroup}
+                                            isSelectedCount={selectedActivityIds.size}
+                                            isGroupDragging={isGroupDragging}
+                                            groupDragDeltaMs={groupDragDeltaMs}
+                                            onStartGroupDrag={handleStartGroupDrag}
                                             isSelectedPredecessor={isSelectedPred}
                                             isLinkingMode={!!selectedSourceActivity}
                                             isSameMpAsSelected={isCandidate}
