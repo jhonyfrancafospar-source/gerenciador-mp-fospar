@@ -8,6 +8,7 @@ import {
     calculateShiftForDate,
     cleanDependencyIds
 } from '../utils/dependencyUtils';
+import { getDaySpecialInfo } from '../utils/holidayUtils';
 
 interface ActivityGanttViewProps {
     activities: Activity[];
@@ -464,6 +465,10 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
     const [hourWidth, setHourWidth] = useState(60); // Zoom level
     const [isCompact, setIsCompact] = useState(false); // Row height toggle
     const [showDependencies, setShowDependencies] = useState(true); // Predecessor/Successor link arrows
+    const [highlightNonWorkingDays, setHighlightNonWorkingDays] = useState<boolean>(() => {
+        const saved = localStorage.getItem('gantt_highlight_non_working_days');
+        return saved !== null ? saved === 'true' : true;
+    });
     const [selectedSourceActivity, setSelectedSourceActivity] = useState<Activity | null>(null);
     const [hoveredLink, setHoveredLink] = useState<{
         id: string;
@@ -1386,6 +1391,31 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                         <span className="font-semibold text-indigo-600 dark:text-indigo-400">🔗 Vínculos ({dependencyLinks.length})</span>
                     </label>
 
+                    <label className="flex items-center cursor-pointer space-x-1.5 text-xs text-gray-700 dark:text-gray-300" title="Destacar visualmente sábados, domingos e feriados nacionais no calendário e grade">
+                        <input 
+                            type="checkbox" 
+                            checked={highlightNonWorkingDays} 
+                            onChange={(e) => {
+                                setHighlightNonWorkingDays(e.target.checked);
+                                localStorage.setItem('gantt_highlight_non_working_days', String(e.target.checked));
+                            }} 
+                            className="rounded text-rose-600 focus:ring-rose-500 dark:bg-gray-700 dark:border-gray-600"
+                        />
+                        <span className="font-semibold text-rose-700 dark:text-rose-400 flex items-center gap-1">
+                            <span>📅</span>
+                            <span>Sáb / Dom / Feriados</span>
+                        </span>
+                    </label>
+
+                    {highlightNonWorkingDays && (
+                        <div className="hidden lg:flex items-center gap-2 text-[11px] px-2.5 py-1 rounded-md bg-rose-50/70 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60 shadow-xs select-none">
+                            <span className="flex items-center gap-1.5 text-rose-800 dark:text-rose-200 font-semibold">
+                                <span className="w-2.5 h-2.5 rounded-xs bg-rose-500 border border-rose-600 inline-block" />
+                                <span>Sábados, Domingos e Feriados</span>
+                            </span>
+                        </div>
+                    )}
+
                     {/* Group Selection Badge / Control */}
                     <button
                         type="button"
@@ -1492,15 +1522,59 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                                     const dayName = day.toLocaleDateString('pt-BR', { weekday: 'short' });
                                     const dateStr = day.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
                                     const isToday = new Date().toDateString() === day.toDateString();
+                                    const specialInfo = getDaySpecialInfo(day);
+
+                                    let dayStyle = 'text-gray-700 dark:text-gray-300';
+                                    let badge = null;
+
+                                    if (highlightNonWorkingDays) {
+                                        if (specialInfo.isHoliday) {
+                                            dayStyle = 'bg-rose-100/90 dark:bg-rose-950/70 text-rose-950 dark:text-rose-100 border-r-2 border-r-rose-400 dark:border-r-rose-600 font-bold shadow-xs';
+                                            badge = (
+                                                <span 
+                                                    className="bg-rose-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs truncate max-w-[130px] flex items-center gap-1 border border-rose-400/50" 
+                                                    title={`Feriado: ${specialInfo.holiday?.name}`}
+                                                >
+                                                    <span>🎉</span>
+                                                    <span className="truncate">{specialInfo.holiday?.name}</span>
+                                                </span>
+                                            );
+                                        } else if (specialInfo.isSunday) {
+                                            dayStyle = 'bg-rose-100/90 dark:bg-rose-950/70 text-rose-950 dark:text-rose-100 border-r-2 border-r-rose-400 dark:border-r-rose-600 font-bold shadow-xs';
+                                            badge = (
+                                                <span className="bg-rose-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs border border-rose-400/50">
+                                                    Dom
+                                                </span>
+                                            );
+                                        } else if (specialInfo.isSaturday) {
+                                            dayStyle = 'bg-rose-100/90 dark:bg-rose-950/70 text-rose-950 dark:text-rose-100 border-r-2 border-r-rose-400 dark:border-r-rose-600 font-bold shadow-xs';
+                                            badge = (
+                                                <span className="bg-rose-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs border border-rose-400/50">
+                                                    Sáb
+                                                </span>
+                                            );
+                                        } else if (isToday) {
+                                            dayStyle = 'bg-blue-50/80 dark:bg-blue-900/30 text-primary-600 dark:text-primary-400 font-bold';
+                                            badge = (
+                                                <span className="bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
+                                                    Hoje
+                                                </span>
+                                            );
+                                        }
+                                    } else if (isToday) {
+                                        dayStyle = 'bg-blue-50/80 dark:bg-blue-900/30 text-primary-600 dark:text-primary-400 font-bold';
+                                    }
 
                                     return (
                                         <div 
                                             key={day.getTime()} 
                                             style={{ width: `${dayWidth}px` }}
-                                            className={`flex-shrink-0 border-r border-gray-200 dark:border-gray-700 p-1 text-center font-bold text-xs flex items-center justify-center gap-2 ${isToday ? 'bg-blue-50/80 dark:bg-blue-900/30 text-primary-600 dark:text-primary-400' : 'text-gray-700 dark:text-gray-300'}`}
+                                            className={`flex-shrink-0 border-r border-gray-200 dark:border-gray-700 p-1 text-center text-xs flex items-center justify-center gap-1.5 transition-colors ${dayStyle}`}
+                                            title={specialInfo.tooltip}
                                         >
                                             <span className="capitalize">{dayName}</span>
                                             <span>{dateStr}</span>
+                                            {badge}
                                         </div>
                                     );
                                 })}
@@ -1605,13 +1679,19 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
 
                             <div className="flex" style={{ width: `${totalChartWidth}px` }}>
                                 {days.map((day) => {
+                                    const specialInfo = getDaySpecialInfo(day);
+                                    let hourColStyle = 'text-gray-400';
+                                    if (highlightNonWorkingDays && specialInfo.isNonWorkingDay) {
+                                        hourColStyle = 'bg-rose-50/70 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 font-medium';
+                                    }
+
                                     return (
-                                        <div key={`hours-${day.getTime()}`} className="flex flex-shrink-0">
+                                        <div key={`hours-${day.getTime()}`} className={`flex flex-shrink-0 ${hourColStyle}`}>
                                             {Array.from({ length: 24 }).map((_, hour) => (
                                                 <div 
                                                     key={hour} 
                                                     style={{ width: `${hourWidth}px` }}
-                                                    className="flex-shrink-0 border-r border-gray-100 dark:border-gray-700/60 p-1 text-center text-[10px] text-gray-400"
+                                                    className="flex-shrink-0 border-r border-gray-100 dark:border-gray-700/60 p-1 text-center text-[10px]"
                                                 >
                                                     {hour.toString().padStart(2, '0')}:00
                                                 </div>
@@ -1640,22 +1720,55 @@ export const ActivityGanttView: React.FC<ActivityGanttViewProps> = ({
                         className="relative" 
                         style={{ width: `${yAxisWidth + totalChartWidth}px` }}
                     >
-                        {/* Background Grid Lines */}
+                        {/* Background Grid Lines and Weekend / Holiday Demarcation */}
                         <div 
                             className="absolute top-0 bottom-0 pointer-events-none flex" 
                             style={{ left: `${yAxisWidth}px`, width: `${totalChartWidth}px` }}
                         >
-                            {days.map((day) => (
-                                <div key={`grid-day-${day.getTime()}`} className="flex flex-shrink-0" style={{ width: `${24 * hourWidth}px` }}>
-                                    {Array.from({ length: 24 }).map((_, hour) => (
-                                        <div 
-                                            key={`grid-hour-${hour}`} 
-                                            style={{ width: `${hourWidth}px` }}
-                                            className="flex-shrink-0 border-r border-gray-100 dark:border-gray-700/30 h-full"
-                                        />
-                                    ))}
-                                </div>
-                            ))}
+                            {days.map((day) => {
+                                const specialInfo = getDaySpecialInfo(day);
+                                let dayBgClass = '';
+                                let hourBorderClass = 'border-r border-gray-100 dark:border-gray-700/30';
+                                let dayBorderClass = '';
+
+                                if (highlightNonWorkingDays && specialInfo.isNonWorkingDay) {
+                                    dayBgClass = 'bg-rose-500/[0.08] dark:bg-rose-500/[0.15]';
+                                    hourBorderClass = 'border-r border-rose-200/30 dark:border-rose-800/20';
+                                    dayBorderClass = 'border-r-2 border-r-rose-400/50 dark:border-r-rose-600/50';
+                                }
+
+                                return (
+                                    <div 
+                                        key={`grid-day-${day.getTime()}`} 
+                                        className={`flex flex-shrink-0 relative ${dayBgClass} ${dayBorderClass}`} 
+                                        style={{ width: `${24 * hourWidth}px` }}
+                                    >
+                                        {/* Top indicator tag in grid column */}
+                                        {highlightNonWorkingDays && specialInfo.isHoliday && (
+                                            <div className="absolute top-2 left-2 z-0 opacity-40 select-none pointer-events-none flex items-center gap-1 text-[11px] font-black text-rose-600 dark:text-rose-400 whitespace-nowrap">
+                                                <span>🎉 Feriado: {specialInfo.holiday?.name}</span>
+                                            </div>
+                                        )}
+                                        {highlightNonWorkingDays && specialInfo.isSunday && !specialInfo.isHoliday && (
+                                            <div className="absolute top-2 left-2 z-0 opacity-30 select-none pointer-events-none text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                                                Domingo
+                                            </div>
+                                        )}
+                                        {highlightNonWorkingDays && specialInfo.isSaturday && !specialInfo.isHoliday && (
+                                            <div className="absolute top-2 left-2 z-0 opacity-30 select-none pointer-events-none text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                                                Sábado
+                                            </div>
+                                        )}
+                                        {Array.from({ length: 24 }).map((_, hour) => (
+                                            <div 
+                                                key={`grid-hour-${hour}`} 
+                                                style={{ width: `${hourWidth}px` }}
+                                                className={`flex-shrink-0 h-full ${hourBorderClass}`}
+                                            />
+                                        ))}
+                                    </div>
+                                );
+                            })}
                         </div>
 
                         {/* Current Time Indicator Line */}
