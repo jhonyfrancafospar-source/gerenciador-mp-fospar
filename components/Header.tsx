@@ -1,6 +1,6 @@
 
-import React, { useRef, useState } from 'react';
-import type { ViewType, FilterType, User } from '../types';
+import React, { useRef, useState, useMemo } from 'react';
+import { type ViewType, type FilterType, type User, type Activity, ActivityStatus } from '../types';
 import { SunIcon } from './icons/SunIcon';
 import { MoonIcon } from './icons/MoonIcon';
 import { ChartBarIcon } from './icons/ChartBarIcon';
@@ -8,6 +8,7 @@ import { ListBulletIcon } from './icons/ListBulletIcon';
 import { ViewColumnsIcon } from './icons/ViewColumnsIcon';
 import { ChartPieIcon } from './icons/ChartPieIcon';
 import { DocumentArrowDownIcon } from './icons/DocumentArrowDownIcon';
+import { DocumentArrowUpIcon } from './icons/DocumentArrowUpIcon';
 import { DocumentTextIcon } from './icons/DocumentTextIcon';
 import { ClockHistoryIcon } from './icons/ClockHistoryIcon';
 import { ArrowRightOnRectangleIcon } from './icons/ArrowRightOnRectangleIcon';
@@ -38,8 +39,11 @@ interface HeaderProps {
     user: User | null;
     onLogout: () => void;
     onOpenSettings: () => void;
+    onOpenExportModal?: () => void;
     isOnline?: boolean;
     systemLogos?: { light?: string; dark?: string };
+    customStatusLabels?: Record<string, string>;
+    activities?: Activity[];
 }
 
 const NavButton: React.FC<{
@@ -77,11 +81,32 @@ export const Header: React.FC<HeaderProps> = ({
     user,
     onLogout,
     onOpenSettings,
+    onOpenExportModal,
     isOnline = true,
-    systemLogos
+    systemLogos,
+    customStatusLabels = {},
+    activities = []
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [showFilters, setShowFilters] = useState(false);
+
+    const statusCounts = useMemo(() => {
+        const counts: Record<string, number> = {};
+        if (!activities || activities.length === 0) return counts;
+        activities.forEach(a => {
+            counts[a.status] = (counts[a.status] || 0) + 1;
+        });
+        return counts;
+    }, [activities]);
+
+    const statusOptions = [
+        { value: 'all', label: 'Todos os Status' },
+        { value: ActivityStatus.Open, label: customStatusLabels[ActivityStatus.Open] || 'Aberto' },
+        { value: ActivityStatus.EmProgresso, label: customStatusLabels[ActivityStatus.EmProgresso] || 'Em Andamento' },
+        { value: ActivityStatus.ExecutadoParcialmente, label: customStatusLabels[ActivityStatus.ExecutadoParcialmente] || 'Exec. Parcialmente' },
+        { value: ActivityStatus.Closed, label: customStatusLabels[ActivityStatus.Closed] || 'Concluído' },
+        { value: ActivityStatus.NaoExecutado, label: customStatusLabels[ActivityStatus.NaoExecutado] || 'Não Executado' },
+    ];
 
     const handlePrint = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -139,23 +164,35 @@ export const Header: React.FC<HeaderProps> = ({
                         <div className="flex items-center gap-2 xl:hidden">
                             <div className="flex flex-col gap-1.5">
                                 {user?.role === 'admin' && (
-                                    <button
-                                        type="button"
-                                        onClick={handleImportClick}
-                                        className="p-2 rounded-md bg-green-600 hover:bg-green-700 text-white shadow-sm transition-colors flex items-center justify-center"
-                                        title="Importar"
-                                    >
-                                       <DocumentArrowDownIcon className="w-5 h-5" />
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={handleImportClick}
+                                            className="p-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white shadow-sm transition-colors flex items-center justify-center"
+                                            title="Importar Excel"
+                                        >
+                                           <DocumentArrowDownIcon className="w-4 h-4" />
+                                        </button>
+                                        {onOpenExportModal && (
+                                            <button
+                                                type="button"
+                                                onClick={onOpenExportModal}
+                                                className="p-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm transition-colors flex items-center justify-center"
+                                                title="Exportar Programação para Excel"
+                                            >
+                                               <DocumentArrowUpIcon className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
                                 )}
                                 
                                 <button
                                     type="button"
                                     onClick={(e) => handlePrint(e)}
-                                    className="p-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors flex items-center justify-center"
+                                    className="p-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors flex items-center justify-center"
                                     title="Imprimir"
                                 >
-                                    <PrinterIcon className="w-5 h-5 pointer-events-none" />
+                                    <PrinterIcon className="w-4 h-4 pointer-events-none" />
                                 </button>
                             </div>
                             
@@ -196,24 +233,38 @@ export const Header: React.FC<HeaderProps> = ({
                     </nav>
                     
                     {/* Desktop Actions */}
-                    <div className="hidden xl:flex items-center space-x-3 justify-end w-full xl:w-auto">
-                        <div className="flex flex-col gap-1.5">
+                    <div className="hidden xl:flex items-center space-x-2.5 justify-end w-full xl:w-auto">
+                        <div className="flex items-center gap-1.5">
                             {user?.role === 'admin' && (
-                                <button
-                                    type="button"
-                                    onClick={handleImportClick}
-                                    className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-green-600 hover:bg-green-700 text-white transition-colors shadow-sm"
-                                    title="Importar Excel"
-                                >
-                                   <DocumentArrowDownIcon className="w-4 h-4" />
-                                   <span>Importar</span>
-                                 </button>
-                             )}
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={handleImportClick}
+                                        className="flex items-center justify-center space-x-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-green-600 hover:bg-green-700 text-white transition-colors shadow-sm"
+                                        title="Importar Planilha Excel"
+                                    >
+                                       <DocumentArrowDownIcon className="w-4 h-4" />
+                                       <span>Importar</span>
+                                     </button>
+
+                                    {onOpenExportModal && (
+                                        <button
+                                            type="button"
+                                            onClick={onOpenExportModal}
+                                            className="flex items-center justify-center space-x-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white transition-colors shadow-sm"
+                                            title="Exportar programações para arquivo Excel (.xlsx)"
+                                        >
+                                           <DocumentArrowUpIcon className="w-4 h-4" />
+                                           <span>Exportar</span>
+                                         </button>
+                                     )}
+                                </>
+                            )}
                             
                             <button
                                 type="button"
                                 onClick={(e) => handlePrint(e)}
-                                className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-sm"
+                                className="flex items-center justify-center space-x-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-sm"
                                 title="Imprimir Lista"
                             >
                                 <PrinterIcon className="w-4 h-4 pointer-events-none" />
@@ -286,7 +337,7 @@ export const Header: React.FC<HeaderProps> = ({
                         )}
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 items-end">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-2 items-end">
                         <div className="flex flex-col">
                             <label htmlFor="id-mp-filter" className="text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-0.5">ID MP</label>
                             <select
@@ -343,6 +394,34 @@ export const Header: React.FC<HeaderProps> = ({
                                 {responsaveis.map(r => <option key={r} value={r}>{r === 'all' ? 'Todos' : r}</option>)}
                             </select>
                         </div>
+
+                        {/* Status Filter */}
+                        <div className="flex flex-col">
+                            <label htmlFor="status-filter" className="text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-0.5 flex items-center justify-between">
+                                <span>Status</span>
+                                {filters.status && filters.status !== 'all' && (
+                                    <span className="text-[9px] text-primary-600 dark:text-primary-400 font-bold">Ativo</span>
+                                )}
+                            </label>
+                            <select
+                                id="status-filter"
+                                value={filters.status || 'all'}
+                                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                                className={`w-full py-1 px-2 text-xs border rounded bg-white/80 dark:bg-gray-700/80 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-primary-500 font-medium ${
+                                    filters.status && filters.status !== 'all' ? 'border-primary-500 ring-1 ring-primary-500/40 bg-primary-50/50 dark:bg-primary-950/40' : ''
+                                }`}
+                            >
+                                {statusOptions.map(opt => {
+                                    const count = opt.value === 'all' ? activities.length : (statusCounts[opt.value] || 0);
+                                    const countStr = activities.length > 0 ? ` (${count})` : '';
+                                    return (
+                                        <option key={opt.value} value={opt.value}>
+                                            {opt.label}{countStr}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                        </div>
                         
                         <div className="flex items-center pb-1 space-x-2">
                              <label className="inline-flex items-center cursor-pointer">
@@ -363,6 +442,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     turno: 'all',
                                     responsavel: 'all',
                                     supervisor: 'all',
+                                    status: 'all',
                                     idMp: '',
                                     search: '',
                                     onlyMyActivities: false

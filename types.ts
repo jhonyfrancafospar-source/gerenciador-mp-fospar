@@ -6,7 +6,7 @@ export type FilterType = {
     turno: string;
     responsavel: string;
     supervisor: string;
-    // date removed
+    status?: string;
     idMp: string;
     search: string;
     onlyMyActivities: boolean;

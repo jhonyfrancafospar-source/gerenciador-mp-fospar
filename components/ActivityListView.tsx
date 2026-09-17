@@ -7,6 +7,7 @@ import { CameraIcon } from './icons/CameraIcon';
 import { ArrowsUpDownIcon } from './icons/ArrowsUpDownIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { ViewColumnsIcon } from './icons/ViewColumnsIcon';
+import { DocumentArrowUpIcon } from './icons/DocumentArrowUpIcon';
 import { XMarkIcon } from './icons/XMarkIcon';
 import { SearchIcon } from './icons/SearchIcon';
 import { LinkIcon } from './icons/LinkIcon';
@@ -16,11 +17,16 @@ import { DateSlicer, doesActivityMatchDate } from './DateSlicer';
 
 interface ActivityListViewProps {
     activities: Activity[];
+    allUnfilteredActivities?: Activity[];
     onEdit: (activity: Activity) => void;
     onUpdateStatus: (activityId: string, status: ActivityStatus) => void;
     onDelete?: (activityId: string) => void;
     customStatusLabels?: Record<string, string>;
     onRecalculateSchedule?: (targetMpId?: string) => void;
+    statusFilter?: string;
+    onStatusFilterChange?: (status: string) => void;
+    isAdmin?: boolean;
+    onOpenExport?: () => void;
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -89,12 +95,72 @@ const WIDTHS_STORAGE_KEY = 'fospar_column_widths_v2';
 
 export const ActivityListView: React.FC<ActivityListViewProps> = ({ 
     activities, 
+    allUnfilteredActivities,
     onEdit, 
     onUpdateStatus, 
     onDelete, 
     customStatusLabels = {},
-    onRecalculateSchedule
+    onRecalculateSchedule,
+    statusFilter = 'all',
+    onStatusFilterChange,
+    isAdmin,
+    onOpenExport
 }) => {
+    // Status Counts & Configuration for Quick Filter Pills
+    const statusCounts = useMemo(() => {
+        const pool = allUnfilteredActivities || activities;
+        const counts: Record<string, number> = { all: pool.length };
+        pool.forEach(a => {
+            counts[a.status] = (counts[a.status] || 0) + 1;
+        });
+        return counts;
+    }, [allUnfilteredActivities, activities]);
+
+    const statusPillConfigs = useMemo(() => [
+        {
+            value: 'all',
+            label: 'Todos',
+            dotClass: 'bg-gray-400',
+            activeClass: 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 ring-2 ring-gray-400/40 font-bold',
+            badgeActiveClass: 'bg-white/30 text-white dark:bg-gray-800 dark:text-gray-100',
+        },
+        {
+            value: ActivityStatus.Open,
+            label: customStatusLabels[ActivityStatus.Open] || 'Aberto',
+            dotClass: 'bg-gray-500',
+            activeClass: 'bg-gray-800 text-white ring-2 ring-gray-500/50 font-bold',
+            badgeActiveClass: 'bg-white/20 text-white',
+        },
+        {
+            value: ActivityStatus.EmProgresso,
+            label: customStatusLabels[ActivityStatus.EmProgresso] || 'Em Andamento',
+            dotClass: 'bg-blue-500',
+            activeClass: 'bg-blue-600 text-white ring-2 ring-blue-500/50 font-bold',
+            badgeActiveClass: 'bg-blue-800 text-white',
+        },
+        {
+            value: ActivityStatus.ExecutadoParcialmente,
+            label: customStatusLabels[ActivityStatus.ExecutadoParcialmente] || 'Parcial',
+            dotClass: 'bg-yellow-400',
+            activeClass: 'bg-yellow-500 text-gray-900 ring-2 ring-yellow-400/50 font-bold',
+            badgeActiveClass: 'bg-yellow-700 text-white',
+        },
+        {
+            value: ActivityStatus.Closed,
+            label: customStatusLabels[ActivityStatus.Closed] || 'Concluído',
+            dotClass: 'bg-green-500',
+            activeClass: 'bg-green-600 text-white ring-2 ring-green-500/50 font-bold',
+            badgeActiveClass: 'bg-green-800 text-white',
+        },
+        {
+            value: ActivityStatus.NaoExecutado,
+            label: customStatusLabels[ActivityStatus.NaoExecutado] || 'Não Executado',
+            dotClass: 'bg-red-500',
+            activeClass: 'bg-red-600 text-white ring-2 ring-red-500/50 font-bold',
+            badgeActiveClass: 'bg-red-800 text-white',
+        },
+    ], [customStatusLabels]);
+
     // Sorting State
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: null, direction: 'asc' });
     
@@ -376,12 +442,78 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({
         </th>
     );
 
+    const renderStatusFilterBar = () => {
+        if (!onStatusFilterChange) return null;
+        return (
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1.5 px-2.5 bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-lg border border-gray-200/80 dark:border-gray-700/80 shadow-xs print:hidden">
+                <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap mr-1">
+                    Status:
+                </span>
+                <div className="flex items-center gap-1.5 flex-nowrap">
+                    {statusPillConfigs.map(btn => {
+                        const isActive = (statusFilter || 'all') === btn.value;
+                        const count = statusCounts[btn.value] || 0;
+                        return (
+                            <button
+                                key={btn.value}
+                                type="button"
+                                onClick={() => onStatusFilterChange(btn.value)}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all shadow-xs cursor-pointer ${
+                                    isActive
+                                        ? btn.activeClass
+                                        : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                                }`}
+                            >
+                                <span className={`w-2 h-2 rounded-full ${btn.dotClass}`}></span>
+                                <span>{btn.label}</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                                    isActive ? btn.badgeActiveClass : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                                }`}>
+                                    {count}
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+                {statusFilter && statusFilter !== 'all' && (
+                    <button
+                        type="button"
+                        onClick={() => onStatusFilterChange('all')}
+                        className="text-[11px] font-bold text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 ml-auto whitespace-nowrap uppercase tracking-wider pl-2"
+                        title="Limpar filtro de status"
+                    >
+                        Limpar Filtro
+                    </button>
+                )}
+            </div>
+        );
+    };
+
     if (activities.length === 0) {
-        return <div className="text-center p-8 bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow">Nenhuma atividade encontrada.</div>;
+        return (
+            <div className="space-y-2.5">
+                {renderStatusFilterBar()}
+                <div className="text-center p-8 bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow space-y-3">
+                    <p className="text-gray-600 dark:text-gray-300 font-medium">Nenhuma atividade encontrada com os filtros selecionados.</p>
+                    {statusFilter && statusFilter !== 'all' && onStatusFilterChange && (
+                        <button
+                            type="button"
+                            onClick={() => onStatusFilterChange('all')}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold rounded-md shadow transition-colors"
+                        >
+                            <span>Ver todas as atividades</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
     }
 
     return (
         <div className="space-y-2.5">
+            {/* Filtro Rápido por Status */}
+            {renderStatusFilterBar()}
+
             {/* Segmentação de Dados por Data do Dia da Atividade */}
             <DateSlicer
                 activities={activities}
@@ -420,6 +552,18 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {isAdmin && onOpenExport && (
+                        <button
+                            type="button"
+                            onClick={onOpenExport}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all shadow-sm"
+                            title="Exportar programações para planilha Excel (.xlsx) [Acesso ADMIN]"
+                        >
+                            <DocumentArrowUpIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                            <span>Exportar Excel</span>
+                        </button>
+                    )}
+
                     {onRecalculateSchedule && (
                         <button
                             type="button"

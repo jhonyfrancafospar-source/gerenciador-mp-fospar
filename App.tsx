@@ -15,6 +15,7 @@ import { Modal } from './components/Modal';
 import { ActivityForm } from './components/ActivityForm';
 import { LoginView } from './components/LoginView';
 import { ImportMappingModal } from './components/ImportMappingModal';
+import { ExportModal } from './components/ExportModal';
 import { mockActivities, mockUsers } from './data/mockData';
 import { Activity, ViewType, FilterType, ActivityStatus, Criticidade, AuditLogEntry, User, ImportMapping, ImportBatch, Recorrencia, Attachment } from './types';
 import { PlusIcon } from './components/icons/PlusIcon';
@@ -23,6 +24,7 @@ import { PhotoIcon } from './components/icons/PhotoIcon';
 import { UserIcon } from './components/icons/UserIcon';
 import { TrashIcon } from './components/icons/TrashIcon';
 import { PencilIcon } from './components/icons/PencilIcon';
+import { DocumentArrowUpIcon } from './components/icons/DocumentArrowUpIcon';
 import { safeStorage } from './utils/storage';
 import { supabase } from './supabaseClient'; 
 import { parseAndResolveDependencyString, cascadeScheduleForActivities, calculateShiftForDate } from './utils/dependencyUtils';
@@ -53,8 +55,9 @@ const App: React.FC = () => {
     // Status connection
     const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
 
-    // Import State
+    // Import & Export State
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
     const [pendingImportData, setPendingImportData] = useState<any[]>([]);
     const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
@@ -66,6 +69,7 @@ const App: React.FC = () => {
         turno: 'all', 
         responsavel: 'all', 
         supervisor: 'all',
+        status: 'all',
         idMp: '',
         search: '',
         onlyMyActivities: false
@@ -1067,6 +1071,7 @@ const App: React.FC = () => {
             const turnoMatch = filters.turno === 'all' || activity.turno === filters.turno;
             const responsavelMatch = filters.responsavel === 'all' || activity.responsavel === filters.responsavel;
             const supervisorMatch = filters.supervisor === 'all' || (activity.supervisor || '') === filters.supervisor;
+            const statusMatch = !filters.status || filters.status === 'all' || activity.status === filters.status;
             const idMpMatch = !filters.idMp || (activity.idMp === filters.idMp);
             const myActivitiesMatch = !filters.onlyMyActivities || (
                 user && (
@@ -1086,7 +1091,7 @@ const App: React.FC = () => {
                 activity.area.toLowerCase().includes(searchLower)
             );
 
-            return empresaMatch && turnoMatch && responsavelMatch && supervisorMatch && idMpMatch && myActivitiesMatch && searchMatch;
+            return empresaMatch && turnoMatch && responsavelMatch && supervisorMatch && statusMatch && idMpMatch && myActivitiesMatch && searchMatch;
         });
         return filtered;
     }, [activities, filters, user]);
@@ -1100,7 +1105,21 @@ const App: React.FC = () => {
         const isOperator = user?.role === 'operator';
         switch (currentView) {
             case 'dashboard': return <DashboardView activities={filteredAndSortedActivities} customStatusLabels={statusLabels} />;
-            case 'list': return <ActivityListView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} customStatusLabels={statusLabels} onRecalculateSchedule={() => handleRecalculateSchedule(filters.idMp)} />;
+            case 'list': return (
+                <ActivityListView 
+                    activities={filteredAndSortedActivities} 
+                    allUnfilteredActivities={activities}
+                    onEdit={openEditModal} 
+                    onUpdateStatus={handleUpdateStatus} 
+                    onDelete={isOperator ? undefined : handleDeleteActivity} 
+                    customStatusLabels={statusLabels} 
+                    onRecalculateSchedule={() => handleRecalculateSchedule(filters.idMp)}
+                    statusFilter={filters.status || 'all'}
+                    onStatusFilterChange={(st) => setFilters(prev => ({ ...prev, status: st }))}
+                    isAdmin={user?.role === 'admin'}
+                    onOpenExport={() => setIsExportModalOpen(true)}
+                />
+            );
             case 'board': return <ActivityBoardView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateStatus={handleUpdateStatus} onDelete={isOperator ? undefined : handleDeleteActivity} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'calendar': return <ActivityCalendarView activities={filteredAndSortedActivities} onEdit={openEditModal} customStatusLabels={statusLabels} onDateChange={handleActivityDateChange} userRole={user?.role} />;
             case 'gantt': return <ActivityGanttView activities={filteredAndSortedActivities} onEdit={openEditModal} onUpdateActivity={handleUpdateActivity} onBatchUpdateActivities={handleBatchUpdateActivities} onRecalculateSchedule={() => handleRecalculateSchedule(filters.idMp)} />;
@@ -1178,8 +1197,11 @@ const App: React.FC = () => {
                 user={user}
                 onLogout={handleLogout}
                 onOpenSettings={() => setIsSettingsModalOpen(true)}
+                onOpenExportModal={() => setIsExportModalOpen(true)}
                 isOnline={isSupabaseConnected}
                 systemLogos={systemLogos}
+                customStatusLabels={statusLabels}
+                activities={activities}
             />
 
             <main className="p-2 flex-1 overflow-y-auto relative z-10">
@@ -1193,6 +1215,19 @@ const App: React.FC = () => {
             )}
 
             <ImportMappingModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} excelHeaders={excelHeaders} onConfirm={handleImportConfirm} initialMapping={initialMapping} />
+
+            <ExportModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                filteredActivities={filteredAndSortedActivities}
+                allActivities={activities}
+                customStatusLabels={statusLabels}
+                user={user}
+                currentIdMpFilter={filters.idMp}
+                onExportSuccess={(count, fileName) => {
+                    addAuditLog("EXPORTAR_EXCEL", `Exportou ${count} atividade(s) da programação para o arquivo "${fileName}"`);
+                }}
+            />
 
             <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="Configurações">
                 {/* Settings Content (Existing) */}
@@ -1371,6 +1406,25 @@ const App: React.FC = () => {
                                     </div>
                                 ))}
                             </div>
+                        </div>
+                    )}
+
+                    {/* Export Programações (Admin Only) */}
+                    {user.role === 'admin' && (
+                        <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
+                            <h3 className="font-semibold mb-1">Exportar Programações</h3>
+                            <p className="text-xs text-gray-500 mb-2">Gere um arquivo Excel (.xlsx) completo com os dados das programações, colunas operacionais e resumo de status.</p>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsSettingsModalOpen(false);
+                                    setIsExportModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white transition-colors shadow-sm"
+                            >
+                                <DocumentArrowUpIcon className="w-4 h-4" />
+                                <span>Exportar para Planilha Excel (.xlsx)</span>
+                            </button>
                         </div>
                     )}
 
