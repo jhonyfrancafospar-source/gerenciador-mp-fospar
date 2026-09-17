@@ -14,6 +14,17 @@ import {
     formatMsToDuration,
     calculateShiftForDate
 } from '../utils/dependencyUtils';
+import {
+    SHIFT_RELATIONS,
+    CANONICAL_SHIFTS,
+    ALL_CANONICAL_SUPERVISORS,
+    normalizeTurno,
+    normalizeSupervisor,
+    getSupervisoresForTurno,
+    getDefaultSupervisorForTurno,
+    getTurnoForSupervisor,
+    reconcileShiftAndSupervisor
+} from '../utils/shiftUtils';
 
 interface ActivityFormProps {
     activity?: Activity | null;
@@ -44,36 +55,42 @@ const toLocalDateTimeLocal = (dateInput: string | Date | undefined | null): stri
     }
 };
 
-const initialFormState = (): Omit<Activity, 'id'> => ({
-    idMp: '',
-    tag: '',
-    tipo: 'PLANO',
-    periodicidade: Recorrencia.NaoHa,
-    area: '',
-    descricao: '',
-    jornada: '',
-    turno: '',
-    empresa: 'FOSPAR',
-    efetivo: '',
-    responsavel: '',
-    supervisor: '',
-    horaInicio: toLocalDateTimeLocal(new Date()), // Local datetime-local format
-    horaFim: toLocalDateTimeLocal(new Date(Date.now() + 3600000)),
-    horaInicioReal: '',
-    horaFimReal: '',
-    duracao: '01:00',
-    progresso: 0,
-    predecessoras: [],
-    sucessoras: [],
-    "r eletrico": false,
-    labapet: false,
-    criticidade: Criticidade.Normal,
-    status: ActivityStatus.Open,
-    attachments: [],
-    beforeImage: [],
-    afterImage: [],
-    observacoes: ''
-});
+const initialFormState = (): Omit<Activity, 'id'> => {
+    const now = new Date();
+    const defaultShift = calculateShiftForDate(now) || 'A';
+    const defaultSup = getDefaultSupervisorForTurno(defaultShift);
+
+    return {
+        idMp: '',
+        tag: '',
+        tipo: 'PLANO',
+        periodicidade: Recorrencia.NaoHa,
+        area: '',
+        descricao: '',
+        jornada: '',
+        turno: defaultShift,
+        empresa: 'FOSPAR',
+        efetivo: '',
+        responsavel: '',
+        supervisor: defaultSup,
+        horaInicio: toLocalDateTimeLocal(now),
+        horaFim: toLocalDateTimeLocal(new Date(now.getTime() + 3600000)),
+        horaInicioReal: '',
+        horaFimReal: '',
+        duracao: '01:00',
+        progresso: 0,
+        predecessoras: [],
+        sucessoras: [],
+        "r eletrico": false,
+        labapet: false,
+        criticidade: Criticidade.Normal,
+        status: ActivityStatus.Open,
+        attachments: [],
+        beforeImage: [],
+        afterImage: [],
+        observacoes: ''
+    };
+};
 
 export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivities = [], onSubmit, onClose, customStatusLabels = {}, onUpload, userRole }) => {
     const [formData, setFormData] = useState<Omit<Activity, 'id'>>(initialFormState());
@@ -94,6 +111,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivit
         if (activity) {
             const isClosed = activity.status === ActivityStatus.Closed;
             const currentProg = isClosed ? 100 : (activity.progresso !== undefined ? Number(activity.progresso) : 0);
+            const { turno: reconciledTurno, supervisor: reconciledSupervisor } = reconcileShiftAndSupervisor(activity.turno, activity.supervisor);
             setFormData({
                 ...activity,
                 idMp: activity.idMp || '',
@@ -103,7 +121,8 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivit
                 horaFim: activity.horaFim ? toLocalDateTimeLocal(activity.horaFim) : '',
                 horaInicioReal: activity.horaInicioReal ? toLocalDateTimeLocal(activity.horaInicioReal) : '',
                 horaFimReal: activity.horaFimReal ? toLocalDateTimeLocal(activity.horaFimReal) : '',
-                turno: activity.turno || '',
+                turno: reconciledTurno || activity.turno || '',
+                supervisor: reconciledSupervisor || activity.supervisor || '',
                 predecessoras: activity.predecessoras || [],
                 sucessoras: activity.sucessoras || [],
                 beforeImage: Array.isArray(activity.beforeImage) ? activity.beforeImage : (activity.beforeImage ? [activity.beforeImage] : []),
@@ -241,6 +260,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivit
         let updatedInicio = formData.horaInicio;
         let updatedFim = formData.horaFim;
         let updatedTurno = formData.turno;
+        let updatedSupervisor = formData.supervisor;
 
         if (maxPredEndMs > 0) {
             const newStart = new Date(maxPredEndMs);
@@ -250,7 +270,13 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivit
             
             if (formData.turno !== 'ADM') {
                 const newShift = calculateShiftForDate(newStart);
-                if (newShift) updatedTurno = newShift;
+                if (newShift) {
+                    updatedTurno = newShift;
+                    const oldSupervisors = getSupervisoresForTurno(formData.turno);
+                    if (!formData.supervisor || oldSupervisors.includes(normalizeSupervisor(formData.supervisor))) {
+                        updatedSupervisor = getDefaultSupervisorForTurno(newShift);
+                    }
+                }
             }
         }
 
@@ -260,7 +286,8 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivit
             horaInicio: updatedInicio,
             horaFim: updatedFim,
             duracao: formatMsToDuration(durationMs),
-            turno: updatedTurno
+            turno: updatedTurno,
+            supervisor: updatedSupervisor
         }));
         setPredecessorSearch('');
         setIsPredecessorDropdownOpen(false);
@@ -297,9 +324,16 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivit
         const newEnd = new Date(newStart.getTime() + durationMs);
 
         let updatedTurno = formData.turno;
+        let updatedSupervisor = formData.supervisor;
         if (formData.turno !== 'ADM') {
             const newShift = calculateShiftForDate(newStart);
-            if (newShift) updatedTurno = newShift;
+            if (newShift) {
+                updatedTurno = newShift;
+                const oldSupervisors = getSupervisoresForTurno(formData.turno);
+                if (!formData.supervisor || oldSupervisors.includes(normalizeSupervisor(formData.supervisor))) {
+                    updatedSupervisor = getDefaultSupervisorForTurno(newShift);
+                }
+            }
         }
 
         setFormData(prev => ({
@@ -307,7 +341,8 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivit
             horaInicio: toLocalDateTimeLocal(newStart),
             horaFim: toLocalDateTimeLocal(newEnd),
             duracao: formatMsToDuration(durationMs),
-            turno: updatedTurno
+            turno: updatedTurno,
+            supervisor: updatedSupervisor
         }));
     };
 
@@ -317,6 +352,31 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivit
         if (type === 'checkbox') {
             const checked = (e.target as HTMLInputElement).checked;
             setFormData(prev => ({ ...prev, [name]: checked }));
+        } else if (name === 'turno') {
+            const normTurno = normalizeTurno(value);
+            const validSupervisors = getSupervisoresForTurno(normTurno);
+            setFormData(prev => {
+                let newSupervisor = prev.supervisor;
+                if (validSupervisors.length > 0) {
+                    const isCurrentValid = prev.supervisor && validSupervisors.includes(normalizeSupervisor(prev.supervisor));
+                    if (!isCurrentValid) {
+                        newSupervisor = getDefaultSupervisorForTurno(normTurno);
+                    }
+                }
+                return {
+                    ...prev,
+                    turno: normTurno || value,
+                    supervisor: newSupervisor
+                };
+            });
+        } else if (name === 'supervisor') {
+            const normSup = normalizeSupervisor(value);
+            const mappedTurno = getTurnoForSupervisor(normSup);
+            setFormData(prev => ({
+                ...prev,
+                supervisor: normSup || value,
+                turno: mappedTurno || prev.turno
+            }));
         } else if (name === 'status') {
             const newStatus = value as ActivityStatus;
             setFormData(prev => {
@@ -384,16 +444,24 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivit
                 if (!isNaN(startMs)) {
                     const newEnd = new Date(startMs + durationMs);
                     let newTurno = prev.turno;
+                    let newSupervisor = prev.supervisor;
                     if (prev.turno !== 'ADM') {
                         const derivedShift = calculateShiftForDate(new Date(startMs));
-                        if (derivedShift) newTurno = derivedShift;
+                        if (derivedShift) {
+                            newTurno = derivedShift;
+                            const oldSupervisors = getSupervisoresForTurno(prev.turno);
+                            if (!prev.supervisor || oldSupervisors.includes(normalizeSupervisor(prev.supervisor))) {
+                                newSupervisor = getDefaultSupervisorForTurno(derivedShift);
+                            }
+                        }
                     }
                     return {
                         ...prev,
                         horaInicio: value,
                         horaFim: toLocalDateTimeLocal(newEnd),
                         duracao: formatMsToDuration(durationMs),
-                        turno: newTurno
+                        turno: newTurno,
+                        supervisor: newSupervisor
                     };
                 }
                 return { ...prev, horaInicio: value };
@@ -592,19 +660,145 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivit
                 <textarea name="descricao" value={formData.descricao} onChange={handleChange} className={inputClasses} rows={2} required disabled={isOperator} />
             </div>
 
-            {/* People & Location */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-sm font-medium">Responsável (Executante)</label>
-                    <input type="text" name="responsavel" value={formData.responsavel} onChange={handleChange} className={inputClasses} disabled={isOperator} />
+            {/* Equipe & Turno (Supervisor-Turno Relationship) */}
+            <div className="bg-blue-50/40 dark:bg-blue-950/20 p-4 rounded-xl border border-blue-200/60 dark:border-blue-900/40 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                        <h4 className="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider">
+                            Turno & Supervisão
+                        </h4>
+                    </div>
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                        Relação vinculada: Turno ⇄ Supervisor
+                    </span>
                 </div>
+
+                {/* Shift Selector Pills */}
                 <div>
-                    <label className="block text-sm font-medium">Supervisor</label>
-                    <input type="text" name="supervisor" value={formData.supervisor || ''} onChange={handleChange} className={inputClasses} disabled={isOperator} />
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">
+                        Selecione o Turno:
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                        {CANONICAL_SHIFTS.map(shiftKey => {
+                            const info = SHIFT_RELATIONS[shiftKey];
+                            const isSelected = normalizeTurno(formData.turno) === shiftKey;
+                            return (
+                                <button
+                                    key={shiftKey}
+                                    type="button"
+                                    disabled={isOperator}
+                                    onClick={() => {
+                                        const validSupervisors = getSupervisoresForTurno(shiftKey);
+                                        let newSupervisor = formData.supervisor;
+                                        if (!newSupervisor || !validSupervisors.includes(normalizeSupervisor(newSupervisor))) {
+                                            newSupervisor = getDefaultSupervisorForTurno(shiftKey);
+                                        }
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            turno: shiftKey,
+                                            supervisor: newSupervisor
+                                        }));
+                                    }}
+                                    className={`flex flex-col items-start p-2.5 rounded-lg border text-left transition-all ${
+                                        isSelected
+                                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-400/30'
+                                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 text-gray-800 dark:text-gray-200'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between w-full">
+                                        <span className="font-bold text-sm">{info.label}</span>
+                                        {isSelected && (
+                                            <span className="w-2 h-2 rounded-full bg-white"></span>
+                                        )}
+                                    </div>
+                                    <span className={`text-[11px] mt-1 line-clamp-1 w-full ${
+                                        isSelected ? 'text-blue-100 font-medium' : 'text-gray-500 dark:text-gray-400'
+                                    }`} title={info.shortSummary}>
+                                        {info.shortSummary}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Supervisor & Executor Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Supervisor Responsável
+                        </label>
+                        <select
+                            name="supervisor"
+                            value={formData.supervisor || ''}
+                            onChange={handleChange}
+                            className={inputClasses}
+                            disabled={isOperator}
+                        >
+                            <option value="">Selecione o supervisor...</option>
+                            {ALL_CANONICAL_SUPERVISORS.map(sup => {
+                                const t = getTurnoForSupervisor(sup);
+                                return (
+                                    <option key={sup} value={sup}>
+                                        {sup} {t ? `(Turno ${t})` : ''}
+                                    </option>
+                                );
+                            })}
+                            {formData.supervisor && !ALL_CANONICAL_SUPERVISORS.includes(formData.supervisor as any) && (
+                                <option value={formData.supervisor}>{formData.supervisor} (Personalizado)</option>
+                            )}
+                        </select>
+
+                        {/* Quick Buttons for Turno ADM Supervisors */}
+                        {normalizeTurno(formData.turno) === 'ADM' && (
+                            <div className="mt-2 p-2 bg-white/70 dark:bg-gray-800/70 rounded-lg border border-blue-100 dark:border-blue-900/30">
+                                <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 block mb-1.5">
+                                    Supervisores Turno ADM (clique para alternar):
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {['Suelen Cordeiro', 'Jhony França', 'Luiz Jacon'].map(admSup => {
+                                        const isSelected = formData.supervisor === admSup;
+                                        return (
+                                            <button
+                                                key={admSup}
+                                                type="button"
+                                                disabled={isOperator}
+                                                onClick={() => setFormData(prev => ({ ...prev, supervisor: admSup, turno: 'ADM' }))}
+                                                className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
+                                                    isSelected
+                                                        ? 'bg-blue-600 text-white border-blue-600 font-semibold shadow-xs'
+                                                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                                }`}
+                                            >
+                                                {admSup}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Responsável (Executante)
+                        </label>
+                        <input 
+                            type="text" 
+                            name="responsavel" 
+                            value={formData.responsavel} 
+                            onChange={handleChange} 
+                            className={inputClasses} 
+                            placeholder="Nome do executante ou equipe..." 
+                            disabled={isOperator} 
+                        />
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Empresa, Área & Criticidade */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <label className="block text-sm font-medium">Empresa</label>
                     <input 
@@ -620,19 +814,6 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({ activity, allActivit
                 <div>
                     <label className="block text-sm font-medium">Área</label>
                     <input type="text" name="area" value={formData.area} onChange={handleChange} className={inputClasses} disabled={isOperator} />
-                </div>
-                {/* Turno Editing Field */}
-                <div>
-                    <label className="block text-sm font-medium">Turno</label>
-                    <input 
-                        type="text" 
-                        name="turno" 
-                        value={formData.turno} 
-                        onChange={handleChange} 
-                        className={inputClasses} 
-                        placeholder="A, B, C, D, ADM"
-                        disabled={isOperator}
-                    />
                 </div>
                 <div>
                     <label className="block text-sm font-medium">Criticidade</label>

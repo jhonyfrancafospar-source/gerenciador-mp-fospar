@@ -25,7 +25,8 @@ import { TrashIcon } from './components/icons/TrashIcon';
 import { PencilIcon } from './components/icons/PencilIcon';
 import { safeStorage } from './utils/storage';
 import { supabase } from './supabaseClient'; 
-import { parseAndResolveDependencyString, cascadeScheduleForActivities } from './utils/dependencyUtils';
+import { parseAndResolveDependencyString, cascadeScheduleForActivities, calculateShiftForDate } from './utils/dependencyUtils';
+import { reconcileShiftAndSupervisor, getDefaultSupervisorForTurno } from './utils/shiftUtils';
 
 const App: React.FC = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -896,6 +897,20 @@ const App: React.FC = () => {
 
             const initialStatus = importedProgresso === 100 ? ActivityStatus.Closed : ActivityStatus.Open;
 
+            // Reconcile Turno & Supervisor relationship automatically
+            const rawTurno = mapping.turno ? (row[mapping.turno] || '') : '';
+            const rawSup = mapping.supervisor ? (row[mapping.supervisor] || '') : '';
+            let { turno: reconciledTurno, supervisor: reconciledSupervisor } = reconcileShiftAndSupervisor(rawTurno, rawSup);
+            if (!reconciledTurno && startISO) {
+                const derived = calculateShiftForDate(new Date(startISO));
+                if (derived) {
+                    reconciledTurno = derived;
+                    if (!reconciledSupervisor) {
+                        reconciledSupervisor = getDefaultSupervisorForTurno(derived);
+                    }
+                }
+            }
+
             return {
                 id: `imported_${batchId}_${index}`,
                 idMp: mapping.idMp ? (row[mapping.idMp] || '') : '',
@@ -903,9 +918,9 @@ const App: React.FC = () => {
                 tipo: 'PLANO',
                 descricao: mapping.descricao ? (row[mapping.descricao] || '') : '',
                 responsavel: rawResp,
-                supervisor: mapping.supervisor ? (row[mapping.supervisor] || '') : '',
+                supervisor: reconciledSupervisor || rawSup || '',
                 area: mapping.area ? (row[mapping.area] || '') : '',
-                turno: mapping.turno ? (row[mapping.turno] || '') : '',
+                turno: reconciledTurno || rawTurno || '',
                 empresa: (mapping.empresa && row[mapping.empresa]) ? String(row[mapping.empresa]).trim() : 'FOSPAR', 
                 efetivo: '', 
                 jornada: '',

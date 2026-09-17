@@ -12,6 +12,7 @@ import { SearchIcon } from './icons/SearchIcon';
 import { LinkIcon } from './icons/LinkIcon';
 import { getStatusClasses, getCriticidadeClasses, getStatusLabel } from '../utils/styleUtils';
 import { getPredecessors, getSuccessors, analyzeDependencies, getActivitySequenceMap } from '../utils/dependencyUtils';
+import { DateSlicer, doesActivityMatchDate } from './DateSlicer';
 
 interface ActivityListViewProps {
     activities: Activity[];
@@ -97,6 +98,10 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({
     // Sorting State
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: null, direction: 'asc' });
     
+    // Date Slicer (Segmentação de Dados) State
+    const [selectedDates, setSelectedDates] = useState<string[]>([]);
+    const [dateMatchMode, setDateMatchMode] = useState<'start' | 'active'>('active');
+
     // Column Visibility State
     const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
         try {
@@ -229,10 +234,18 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({
         }));
     };
 
-    const sortedActivities = useMemo(() => {
-        if (!sortConfig.key) return activities;
+    // Filter activities by Date Slicer
+    const dateFilteredActivities = useMemo(() => {
+        if (selectedDates.length === 0) return activities;
+        return activities.filter(act =>
+            selectedDates.some(dKey => doesActivityMatchDate(act, dKey, dateMatchMode))
+        );
+    }, [activities, selectedDates, dateMatchMode]);
 
-        return [...activities].sort((a, b) => {
+    const sortedActivities = useMemo(() => {
+        if (!sortConfig.key) return dateFilteredActivities;
+
+        return [...dateFilteredActivities].sort((a, b) => {
             let aValue: any = sortConfig.key === 'statusLabel' 
                 ? getStatusLabel(a.status, customStatusLabels) 
                 : a[sortConfig.key as keyof Activity];
@@ -279,7 +292,7 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({
 
             return 0;
         });
-    }, [activities, sortConfig, customStatusLabels]);
+    }, [dateFilteredActivities, sortConfig, customStatusLabels, sequenceMap]);
 
     // Resizing Logic
     const handleMouseDown = (e: React.MouseEvent, key: string) => {
@@ -368,11 +381,42 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({
     }
 
     return (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
+            {/* Segmentação de Dados por Data do Dia da Atividade */}
+            <DateSlicer
+                activities={activities}
+                selectedDates={selectedDates}
+                onSelectDates={setSelectedDates}
+                matchMode={dateMatchMode}
+                onToggleMatchMode={setDateMatchMode}
+            />
+
             {/* Action & Column Visibility Control Bar */}
             <div className="flex flex-wrap items-center justify-between gap-2 px-1 print:hidden">
-                <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                    Exibindo <span className="font-bold text-gray-700 dark:text-gray-200">{sortedActivities.length}</span> atividade(s) • <span className="font-bold text-primary-600 dark:text-primary-400">{totalVisibleCount}</span> coluna(s) ativa(s)
+                <div className="text-xs text-gray-500 dark:text-gray-400 font-medium flex items-center gap-1.5 flex-wrap">
+                    <span>
+                        Exibindo <span className="font-bold text-gray-700 dark:text-gray-200">{sortedActivities.length}</span>
+                        {selectedDates.length > 0 && (
+                            <span> de <span className="font-bold text-gray-500 dark:text-gray-400">{activities.length}</span></span>
+                        )} atividade(s)
+                    </span>
+                    {selectedDates.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-primary-50 dark:bg-primary-950/60 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800">
+                            Filtro de data ativo
+                            <button
+                                type="button"
+                                onClick={() => setSelectedDates([])}
+                                className="hover:text-primary-900 dark:hover:text-white ml-0.5"
+                                title="Limpar filtro de data"
+                            >
+                                <XMarkIcon className="w-3 h-3" />
+                            </button>
+                        </span>
+                    )}
+                    <span>•</span>
+                    <span>
+                        <span className="font-bold text-primary-600 dark:text-primary-400">{totalVisibleCount}</span> coluna(s) ativa(s)
+                    </span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -552,7 +596,26 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100/50 dark:divide-gray-700/50">
-                        {sortedActivities.map((activity, index) => {
+                        {sortedActivities.length === 0 ? (
+                            <tr>
+                                <td colSpan={Math.max(1, totalVisibleCount)} className="text-center py-10 px-4 text-gray-500 dark:text-gray-400">
+                                    <div className="flex flex-col items-center justify-center gap-2">
+                                        <p className="text-xs font-medium">Nenhuma atividade encontrada para a(s) data(s) selecionada(s).</p>
+                                        {selectedDates.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedDates([])}
+                                                className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-primary-50 text-primary-700 hover:bg-primary-100 dark:bg-primary-950/60 dark:text-primary-300 border border-primary-200 dark:border-primary-800 transition-colors shadow-2xs cursor-pointer"
+                                            >
+                                                <XMarkIcon className="w-3.5 h-3.5" />
+                                                <span>Limpar seleção de datas</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </td>
+                            </tr>
+                        ) : (
+                            sortedActivities.map((activity, index) => {
                             // Conditional Formatting Logic: Open AND Start Time < Now
                             const isOverdue = activity.status === ActivityStatus.Open && new Date(activity.horaInicio) < now;
                             const seqNum = sequenceMap.get(activity.id) || (index + 1);
@@ -862,7 +925,8 @@ export const ActivityListView: React.FC<ActivityListViewProps> = ({
                                     )}
                                 </tr>
                             );
-                        })}
+                        })
+                    )}
                     </tbody>
                 </table>
             </div>
