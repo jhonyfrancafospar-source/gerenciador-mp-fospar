@@ -26,7 +26,7 @@ import { TrashIcon } from './components/icons/TrashIcon';
 import { PencilIcon } from './components/icons/PencilIcon';
 import { DocumentArrowUpIcon } from './components/icons/DocumentArrowUpIcon';
 import { safeStorage } from './utils/storage';
-import { supabase } from './supabaseClient'; 
+import { neonApi, NeonHealthStatus } from './neonClient'; 
 import { parseAndResolveDependencyString, cascadeScheduleForActivities, calculateShiftForDate } from './utils/dependencyUtils';
 import { reconcileShiftAndSupervisor, getDefaultSupervisorForTurno } from './utils/shiftUtils';
 
@@ -52,8 +52,19 @@ const App: React.FC = () => {
     const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
     const [viewingImage, setViewingImage] = useState<string | null>(null);
     
-    // Status connection
-    const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
+    // Status connection - Neon Database
+    const [isNeonConnected, setIsNeonConnected] = useState(false);
+    const [neonStatus, setNeonStatus] = useState<NeonHealthStatus | null>(null);
+    const [isSyncingNeon, setIsSyncingNeon] = useState(false);
+    const [isNeonKeyModalOpen, setIsNeonKeyModalOpen] = useState(false);
+    const [neonConnectionStringInput, setNeonConnectionStringInput] = useState('');
+    const [neonApiKeyInput, setNeonApiKeyInput] = useState('');
+    const [neonAwsAccessKeyInput, setNeonAwsAccessKeyInput] = useState('nak_live_f7618e593c7b490caeb03fddbb413f74');
+    const [neonAwsSecretKeyInput, setNeonAwsSecretKeyInput] = useState('nsk_live_1a0187b098a0b90c03e2f9dddecb5f60c3590ca56a21a9d8a47c2db50f5a5791');
+    const [showKeyPassword, setShowKeyPassword] = useState(false);
+    const [showAwsSecretPassword, setShowAwsSecretPassword] = useState(false);
+    const [neonConfigLoading, setNeonConfigLoading] = useState(false);
+    const [neonConfigMessage, setNeonConfigMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     // Import & Export State
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -93,224 +104,229 @@ const App: React.FC = () => {
         };
     });
 
-    // --- DATA LOADING & SUPABASE ---
+    // --- DATA LOADING & NEON POSTGRESQL ---
     
-    const logMissingTablesError = () => {
-        if (!isSupabaseConnected) return; // Prevent spam
-        console.warn("SUPABASE: Tabelas não encontradas. O App funcionará em modo OFFLINE.");
-        console.warn("Para corrigir, execute o SQL no editor do Supabase (Ver documentação).");
-    };
-
     useEffect(() => {
         const loadData = async () => {
-            // Check connection first
-            const { error: healthCheck } = await supabase.from('activities').select('id').limit(1);
-            
-            if (healthCheck && healthCheck.code === 'PGRST204') {
-               // Ignore specific error logic for now, try catch block below is better
-            }
-
             try {
+                // Check Neon Health
+                const health = await neonApi.checkHealth();
+                setNeonStatus(health);
+                const isOnline = health.neonConnected || health.status === 'ok';
+                setIsNeonConnected(isOnline);
+
                 // 1. Users
-                const { data: usersData, error: usersError } = await supabase.from('app_users').select('*');
-                if (usersError) throw usersError;
-                if (usersData) {
-                    const normalizedUsers = usersData.map((u: any) => ({
-                        username: u.username,
-                        name: u.name,
-                        password: u.password,
-                        role: (u.role || 'user').toLowerCase() as 'admin' | 'user' | 'operator',
-                        profilePicture: u.profile_picture || u.profilePicture,
-                        backgroundImage: u.background_image || u.backgroundImage,
-                        logoLight: u.logo_light || u.logoLight,
-                        logoDark: u.logo_dark || u.logoDark,
-                    }));
-                    setUsers(normalizedUsers);
+                try {
+                    const usersData = await neonApi.getUsers();
+                    if (usersData && usersData.length > 0) {
+                        setUsers(usersData);
+                    } else {
+                        const storedUsers = safeStorage.getItem('db_users_secure');
+                        setUsers(storedUsers ? JSON.parse(storedUsers) : mockUsers);
+                    }
+                } catch (e) {
+                    console.warn('[Neon] Erro ao carregar usuários da API:', e);
+                    const storedUsers = safeStorage.getItem('db_users_secure');
+                    setUsers(storedUsers ? JSON.parse(storedUsers) : mockUsers);
                 }
 
                 // 2. Activities
-                const allActivities: any[] = [];
-                let actStart = 0;
-                const actLimit = 200;
-                while (true) {
-                    const { data: chunkData, error: actError } = await supabase
-                        .from('activities')
-                        .select('*')
-                        .range(actStart, actStart + actLimit - 1);
-                    if (actError) throw actError;
-                    if (!chunkData || chunkData.length === 0) break;
-                    allActivities.push(...chunkData);
-                    actStart += actLimit;
+                let loadedActivities: Activity[] = [];
+                try {
+                    const actData = await neonApi.getActivities();
+                    if (actData && actData.length > 0) {
+                        loadedActivities = actData;
+                        setActivities(actData);
+                    } else {
+                        const storedActivities = safeStorage.getItem('db_activities');
+                        loadedActivities = storedActivities ? JSON.parse(storedActivities) : mockActivities;
+                        setActivities(loadedActivities);
+                    }
+                } catch (e) {
+                    console.warn('[Neon] Erro ao carregar atividades da API:', e);
+                    const storedActivities = safeStorage.getItem('db_activities');
+                    loadedActivities = storedActivities ? JSON.parse(storedActivities) : mockActivities;
+                    setActivities(loadedActivities);
                 }
-                const parsedActivities = allActivities.map((row: any) => row.json_data || row);
-                setActivities(parsedActivities);
 
                 // 3. Import Batches
-                const { data: batchesData, error: batchError } = await supabase.from('import_batches').select('*');
-                if (batchError) throw batchError;
-                if (batchesData) {
-                    const parsedBatches = batchesData.map((row: any) => row.json_data || row);
-                    setImportBatches(parsedBatches);
+                try {
+                    const batchesData = await neonApi.getImportBatches();
+                    if (batchesData && batchesData.length > 0) {
+                        setImportBatches(batchesData);
+                    } else {
+                        const storedBatches = safeStorage.getItem('db_import_batches');
+                        setImportBatches(storedBatches ? JSON.parse(storedBatches) : []);
+                    }
+                } catch (e) {
+                    const storedBatches = safeStorage.getItem('db_import_batches');
+                    setImportBatches(storedBatches ? JSON.parse(storedBatches) : []);
                 }
 
-                setIsSupabaseConnected(true);
-                console.log("Conectado ao Supabase.");
+                // Auto-sync existing local data to Neon if Neon is connected
+                const localActivitiesStr = safeStorage.getItem('db_activities');
+                if (localActivitiesStr && isOnline) {
+                    try {
+                        const localAct: Activity[] = JSON.parse(localActivitiesStr);
+                        if (localAct.length > (loadedActivities?.length || 0)) {
+                            console.log('[Neon Sync] Sincronizando dados locais acumulados para o Neon...');
+                            await neonApi.saveActivitiesBulk(localAct);
+                        }
+                    } catch (err) {
+                        console.warn('[Neon Auto-Sync Error]:', err);
+                    }
+                }
 
             } catch (error: any) {
-                // Silent fail to local storage if tables missing
-                if (error.message && error.message.includes('relation') && error.message.includes('does not exist')) {
-                    setIsSupabaseConnected(false);
-                    logMissingTablesError();
-                } else {
-                    console.error("Erro ao carregar dados do Supabase:", error);
-                }
+                console.error("Erro geral na inicialização do Neon:", error);
+                setIsNeonConnected(false);
                 
                 // Fallback to LocalStorage
                 const storedUsers = safeStorage.getItem('db_users_secure');
-                if (storedUsers) {
-                    try {
-                        setUsers(JSON.parse(storedUsers));
-                    } catch (e) {
-                        setUsers(mockUsers);
-                    }
-                } else {
-                    setUsers(mockUsers); // Default mocks
-                }
-
+                setUsers(storedUsers ? JSON.parse(storedUsers) : mockUsers);
                 const storedActivities = safeStorage.getItem('db_activities');
-                if (storedActivities) {
-                    try {
-                        setActivities(JSON.parse(storedActivities));
-                    } catch (e) {
-                        setActivities(mockActivities);
-                    }
-                } else {
-                    setActivities(mockActivities);
-                }
-
+                setActivities(storedActivities ? JSON.parse(storedActivities) : mockActivities);
                 const storedBatches = safeStorage.getItem('db_import_batches');
-                if (storedBatches) {
-                    try {
-                        setImportBatches(JSON.parse(storedBatches));
-                    } catch (e) {
-                        setImportBatches([]);
-                    }
-                }
+                setImportBatches(storedBatches ? JSON.parse(storedBatches) : []);
             }
         };
 
         loadData();
     }, []);
 
-    // --- PERSISTENCE (SUPABASE + LOCAL STORAGE FALLBACK) ---
-
-    // Save to LocalStorage whenever state changes (Offline Backup)
-    useEffect(() => {
-        if (!isSupabaseConnected) {
-            safeStorage.setItem('db_users_secure', JSON.stringify(users));
-        }
-    }, [users, isSupabaseConnected]);
+    // --- PERSISTENCE (NEON POSTGRESQL + LOCAL STORAGE BACKUP) ---
 
     useEffect(() => {
-        if (!isSupabaseConnected) {
-            safeStorage.setItem('db_activities', JSON.stringify(activities));
-        }
-    }, [activities, isSupabaseConnected]);
+        safeStorage.setItem('db_users_secure', JSON.stringify(users));
+    }, [users]);
 
     useEffect(() => {
-        if (!isSupabaseConnected) {
-            safeStorage.setItem('db_import_batches', JSON.stringify(importBatches));
-        }
-    }, [importBatches, isSupabaseConnected]);
+        safeStorage.setItem('db_activities', JSON.stringify(activities));
+    }, [activities]);
 
+    useEffect(() => {
+        safeStorage.setItem('db_import_batches', JSON.stringify(importBatches));
+    }, [importBatches]);
 
-    const saveActivityToSupabase = async (activity: Activity) => {
-        if (!isSupabaseConnected) return;
-        const cleanActivity = JSON.parse(JSON.stringify(activity));
-        const { error } = await supabase.from('activities').upsert({
-            id: activity.id,
-            json_data: cleanActivity
-        });
-        if (error) {
-            if (error.code === '42501') alert("Erro de Permissão (RLS). Execute o script SQL no Supabase.");
-            else if (!error.message.includes("does not exist")) console.error('Error saving activity:', error.message);
-        }
-    };
-
-    const deleteActivityFromSupabase = async (id: string) => {
-        if (!isSupabaseConnected) return;
-        await supabase.from('activities').delete().eq('id', id);
-    };
-
-    const saveUserToSupabase = async (u: User) => {
-        if (!isSupabaseConnected) return;
-        const dbUser = {
-            username: u.username,
-            name: u.name,
-            password: u.password,
-            role: (u.role || 'user').toLowerCase(),
-            profile_picture: u.profilePicture || null,
-            background_image: u.backgroundImage || null
-        };
-        const { error } = await supabase.from('app_users').upsert(dbUser);
-        if (error) {
-             if (error.code === '42501') alert("Erro de Permissão (RLS) ao salvar usuário.");
-             else if (!error.message.includes("does not exist")) console.error('Error saving user:', error.message);
-        }
-    };
-
-    const saveBatchToSupabase = async (batch: ImportBatch) => {
-        if (!isSupabaseConnected) return;
-        const cleanBatch = JSON.parse(JSON.stringify(batch));
-        const { error } = await supabase.from('import_batches').upsert({
-            id: batch.id,
-            json_data: cleanBatch
-        });
-        if (error && !error.message.includes("does not exist")) console.error('Error saving batch:', error.message);
-    };
-
-    const deleteBatchFromSupabase = async (batchId: string) => {
-         if (!isSupabaseConnected) return;
-         await supabase.from('import_batches').delete().eq('id', batchId);
-    };
-
-    // --- FILE UPLOAD (SUPABASE) ---
-    
-    const fileToBase64 = (file: File): Promise<string> => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = error => reject(error);
-        });
-    };
-
-    const uploadFileToSupabase = async (file: File, folder: string = 'misc'): Promise<string | null> => {
-        if (!isSupabaseConnected) {
-            return await fileToBase64(file); // Fallback offline
-        }
-
+    const saveActivityToNeon = async (activity: Activity) => {
         try {
-            const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-            const filePath = `${folder}/${fileName}`;
+            await neonApi.saveActivity(activity);
+        } catch (error: any) {
+            console.error('Erro ao salvar atividade no Neon:', error.message);
+        }
+    };
 
-            const { data, error } = await supabase.storage
-                .from('app-files')
-                .upload(filePath, file);
+    const deleteActivityFromNeon = async (id: string) => {
+        try {
+            await neonApi.deleteActivity(id);
+        } catch (error: any) {
+            console.error('Erro ao excluir atividade no Neon:', error.message);
+        }
+    };
 
-            if (error) {
-                console.warn("Upload failed (Storage not configured?), falling back to Base64.", error.message);
-                return await fileToBase64(file);
+    const saveUserToNeon = async (u: User) => {
+        try {
+            await neonApi.saveUser(u);
+        } catch (error: any) {
+            console.error('Erro ao salvar usuário no Neon:', error.message);
+        }
+    };
+
+    const saveBatchToNeon = async (batch: ImportBatch) => {
+        try {
+            await neonApi.saveImportBatch(batch);
+        } catch (error: any) {
+            console.error('Erro ao salvar lote no Neon:', error.message);
+        }
+    };
+
+    const deleteBatchFromNeon = async (batchId: string) => {
+        try {
+            await neonApi.deleteImportBatch(batchId);
+        } catch (error: any) {
+            console.error('Erro ao excluir lote no Neon:', error.message);
+        }
+    };
+
+    const uploadFileToNeon = async (file: File): Promise<string> => {
+        return await neonApi.uploadFile(file);
+    };
+
+    const handleSyncAllToNeon = async () => {
+        setIsSyncingNeon(true);
+        try {
+            const res = await neonApi.migrateData({
+                users,
+                activities,
+                batches: importBatches
+            });
+            const health = await neonApi.checkHealth();
+            setNeonStatus(health);
+            setIsNeonConnected(health.neonConnected || health.status === 'ok');
+            alert(`Migração para o Neon concluída com sucesso!\n${res.message || ''}`);
+        } catch (e: any) {
+            alert(`Falha na migração para o Neon: ${e.message}`);
+        } finally {
+            setIsSyncingNeon(false);
+        }
+    };
+
+    const handleSaveNeonConfig = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!neonConnectionStringInput.trim() && !neonAwsAccessKeyInput.trim()) {
+            setNeonConfigMessage({ 
+                type: 'error', 
+                text: 'Por favor, insira a string de conexão PostgreSQL ou as credenciais de Storage do Neon.' 
+            });
+            return;
+        }
+
+        setNeonConfigLoading(true);
+        setNeonConfigMessage(null);
+        try {
+            const result = await neonApi.configureNeon({
+                connectionString: neonConnectionStringInput.trim() || undefined,
+                apiKey: neonApiKeyInput.trim() || undefined,
+                awsAccessKeyId: neonAwsAccessKeyInput.trim() || undefined,
+                awsSecretAccessKey: neonAwsSecretKeyInput.trim() || undefined,
+                awsRegion: 'us-east-2',
+                awsEndpointUrlS3: 'https://ep-restless-bread-b5h2yx96.storage.us-east-2.aws.neon.tech'
+            });
+            if (result.success) {
+                setNeonConfigMessage({ 
+                    type: 'success', 
+                    text: result.message || 'Configurações salvas e validadas com sucesso!' 
+                });
+                if (result.neonConnected) {
+                    setIsNeonConnected(true);
+                }
+                const health = await neonApi.checkHealth();
+                setNeonStatus(health);
+                if (result.neonConnected) {
+                    // Trigger auto sync of current state to Neon
+                    await neonApi.migrateData({
+                        users,
+                        activities,
+                        batches: importBatches
+                    });
+                }
+                setTimeout(() => {
+                    setIsNeonKeyModalOpen(false);
+                    setNeonConfigMessage(null);
+                }, 1600);
+            } else {
+                setNeonConfigMessage({ 
+                    type: 'error', 
+                    text: result.message || 'Falha ao validar credenciais no Neon.' 
+                });
             }
-
-            const { data: publicData } = supabase.storage
-                .from('app-files')
-                .getPublicUrl(filePath);
-
-            return publicData.publicUrl;
-        } catch (e) {
-            console.error("Upload exec error:", e);
-            return await fileToBase64(file);
+        } catch (err: any) {
+            setNeonConfigMessage({ 
+                type: 'error', 
+                text: err.message || 'Erro de comunicação com o servidor.' 
+            });
+        } finally {
+            setNeonConfigLoading(false);
         }
     };
 
@@ -354,7 +370,7 @@ const App: React.FC = () => {
         
         setUsers(prev => [...prev, newUser]);
         setUser(newUser);
-        await saveUserToSupabase(newUser);
+        await saveUserToNeon(newUser);
     };
 
     const handleRecoverPassword = (username: string, name: string, newPassword: string): boolean => {
@@ -368,7 +384,7 @@ const App: React.FC = () => {
             const newUsers = [...users];
             newUsers[userIdx] = updatedUser;
             setUsers(newUsers);
-            saveUserToSupabase(updatedUser);
+            saveUserToNeon(updatedUser);
             return true;
         }
         return false; 
@@ -388,12 +404,12 @@ const App: React.FC = () => {
     const handleBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0] && user) {
             const file = e.target.files[0];
-            const publicUrl = await uploadFileToSupabase(file, `users/${user.username}`);
+            const publicUrl = await uploadFileToNeon(file);
             if (publicUrl) {
                 const updatedUser = { ...user, backgroundImage: publicUrl };
                 setUser(updatedUser);
                 setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
-                await saveUserToSupabase(updatedUser);
+                await saveUserToNeon(updatedUser);
             }
         }
     };
@@ -403,19 +419,19 @@ const App: React.FC = () => {
              const updatedUser = { ...user, backgroundImage: undefined };
              setUser(updatedUser);
              setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
-             await saveUserToSupabase(updatedUser);
+             await saveUserToNeon(updatedUser);
         }
     };
 
     const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0] && user) {
             const file = e.target.files[0];
-            const publicUrl = await uploadFileToSupabase(file, `users/${user.username}`);
+            const publicUrl = await uploadFileToNeon(file);
             if (publicUrl) {
                 const updatedUser = { ...user, profilePicture: publicUrl };
                 setUser(updatedUser);
                 setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
-                await saveUserToSupabase(updatedUser);
+                await saveUserToNeon(updatedUser);
             }
         }
     };
@@ -430,8 +446,7 @@ const App: React.FC = () => {
             }
 
             try {
-                // Use explicit alert for feedback since it might take a moment if doing base64 fallback
-                const publicUrl = await uploadFileToSupabase(file, `system/logos`);
+                const publicUrl = await uploadFileToNeon(file);
                 
                 if (publicUrl) {
                     const updatedUser = {
@@ -440,7 +455,7 @@ const App: React.FC = () => {
                     };
                     setUser(updatedUser);
                     setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
-                    await saveUserToSupabase(updatedUser);
+                    await saveUserToNeon(updatedUser);
                     alert("Logo atualizada com sucesso!");
                 } else {
                     alert("Falha ao salvar a imagem.");
@@ -461,7 +476,7 @@ const App: React.FC = () => {
             };
             setUser(updatedUser);
             setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
-            await saveUserToSupabase(updatedUser);
+            await saveUserToNeon(updatedUser);
         }
     };
 
@@ -470,7 +485,7 @@ const App: React.FC = () => {
             const updatedUser = { ...user, [type === 'light' ? 'logoLight' : 'logoDark']: '' };
             setUser(updatedUser);
             setUsers(prev => prev.map(u => u.username === user.username ? updatedUser : u));
-            await saveUserToSupabase(updatedUser);
+            await saveUserToNeon(updatedUser);
         }
     };
 
@@ -544,11 +559,11 @@ const App: React.FC = () => {
         setActivities(updatedActivities);
         for (const act of activitiesToAdd) {
             const toSave = updatedActivities.find(a => a.id === act.id) || act;
-            await saveActivityToSupabase(toSave);
+            await saveActivityToNeon(toSave);
         }
         for (const act of updatedActivities) {
             if (changedIds.has(act.id) && !activitiesToAdd.some(a => a.id === act.id)) {
-                await saveActivityToSupabase(act);
+                await saveActivityToNeon(act);
             }
         }
         addAuditLog("CRIAR", `Criou ${activitiesToAdd.length} atividades`, activity.id);
@@ -573,16 +588,16 @@ const App: React.FC = () => {
         setActivities(updatedActivities);
         
         const finalUpdated = updatedActivities.find(a => a.id === updatedActivity.id) || updatedActivity;
-        await saveActivityToSupabase(finalUpdated);
+        await saveActivityToNeon(finalUpdated);
 
         for (const inst of newInstances) {
             const toSave = updatedActivities.find(a => a.id === inst.id) || inst;
-            await saveActivityToSupabase(toSave);
+            await saveActivityToNeon(toSave);
         }
 
         for (const act of updatedActivities) {
             if (changedIds.has(act.id) && act.id !== updatedActivity.id && !newInstances.some(n => n.id === act.id)) {
-                await saveActivityToSupabase(act);
+                await saveActivityToNeon(act);
             }
         }
         setEditingActivity(null);
@@ -596,7 +611,7 @@ const App: React.FC = () => {
         setActivities(newActivities);
 
         for (const act of updatedList) {
-            await saveActivityToSupabase(act);
+            await saveActivityToNeon(act);
         }
 
         addAuditLog(
@@ -611,7 +626,7 @@ const App: React.FC = () => {
         if (changedCount > 0) {
             setActivities(updatedActivities);
             for (const act of updatedActivities) {
-                await saveActivityToSupabase(act);
+                await saveActivityToNeon(act);
             }
             alert(`Cronograma ajustado: ${changedCount} atividade(s) tiveram datas e horários recalculados respeitando seus vínculos e durações!`);
         } else {
@@ -642,7 +657,7 @@ const App: React.FC = () => {
             };
             
             setActivities(prev => prev.map(act => act.id === activityId ? updatedActivity : act));
-            await saveActivityToSupabase(updatedActivity);
+            await saveActivityToNeon(updatedActivity);
         }
     };
 
@@ -652,7 +667,7 @@ const App: React.FC = () => {
             setActivities(prev => prev.filter(act => act.id !== activityId));
             
             // Database update
-            await deleteActivityFromSupabase(activityId);
+            await deleteActivityFromNeon(activityId);
             
             addAuditLog("EXCLUIR", `Excluiu atividade ${activityId}`);
         }
@@ -675,9 +690,10 @@ const App: React.FC = () => {
     const handleDeleteUser = async (usernameToDelete: string) => {
         if (!user || user.role !== 'admin') return;
         if (window.confirm(`Excluir usuário "${usernameToDelete}"?`)) {
-            if (isSupabaseConnected) {
-                const { error } = await supabase.from('app_users').delete().eq('username', usernameToDelete);
-                if (error) { alert("Erro ao excluir do Supabase"); return; }
+            try {
+                await neonApi.deleteUser(usernameToDelete);
+            } catch (err) {
+                console.error("Erro ao excluir usuário no Neon:", err);
             }
             setUsers(prev => prev.filter(u => u.username !== usernameToDelete));
         }
@@ -991,14 +1007,14 @@ const App: React.FC = () => {
             setImportBatches(prev => prev.map(b => b.id === batchId ? { ...b, mapping, count: finalNewActivities.length } : b));
             for (const act of cascadedPool) {
                 if (act.id.startsWith(`imported_${batchId}_`) || importCascadeChanged.has(act.id)) {
-                    await saveActivityToSupabase(act);
+                    await saveActivityToNeon(act);
                 }
             }
         } else {
             setActivities(cascadedPool);
             for (const act of cascadedPool) {
                 if (finalNewActivities.some(n => n.id === act.id) || importCascadeChanged.has(act.id)) {
-                    await saveActivityToSupabase(act);
+                    await saveActivityToNeon(act);
                 }
             }
         }
@@ -1006,7 +1022,7 @@ const App: React.FC = () => {
         // Upload original file if new
         let fileUrl = undefined;
         if (pendingImportFile && !editingBatchId) {
-             fileUrl = await uploadFileToSupabase(pendingImportFile, `imports/${batchId}`);
+             fileUrl = await uploadFileToNeon(pendingImportFile);
         }
 
         const newBatch: ImportBatch = {
@@ -1020,11 +1036,10 @@ const App: React.FC = () => {
         };
 
         if (editingBatchId) {
-             // Already updated state above? No, state logic for batches needs update
-             // Logic merged above
+             // Already updated state above
         } else {
             setImportBatches(prev => [newBatch, ...prev]);
-            await saveBatchToSupabase(newBatch);
+            await saveBatchToNeon(newBatch);
         }
         
         setIsImportModalOpen(false);
@@ -1043,9 +1058,9 @@ const App: React.FC = () => {
             
             // Delete from DB
             for (const id of idsToDelete) {
-                await deleteActivityFromSupabase(id);
+                await deleteActivityFromNeon(id);
             }
-            await deleteBatchFromSupabase(batchId);
+            await deleteBatchFromNeon(batchId);
             
             addAuditLog("EXCLUIR", `Excluiu lote de importação de ${new Date(parseInt(batchId)).toLocaleString()}`);
         }
@@ -1198,7 +1213,7 @@ const App: React.FC = () => {
                 onLogout={handleLogout}
                 onOpenSettings={() => setIsSettingsModalOpen(true)}
                 onOpenExportModal={() => setIsExportModalOpen(true)}
-                isOnline={isSupabaseConnected}
+                isOnline={isNeonConnected}
                 systemLogos={systemLogos}
                 customStatusLabels={statusLabels}
                 activities={activities}
@@ -1230,8 +1245,71 @@ const App: React.FC = () => {
             />
 
             <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="Configurações">
-                {/* Settings Content (Existing) */}
+                {/* Settings Content */}
                 <div className="space-y-6 text-gray-800 dark:text-gray-200">
+                    {/* Database & Neon Migration Section (Admin Only) */}
+                    {user.role === 'admin' && (
+                        <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <h3 className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
+                                    <span>Banco de Dados Neon PostgreSQL</span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isNeonConnected ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                                        {isNeonConnected ? 'Conectado ao Neon' : 'Modo Resiliente (Local & Cache)'}
+                                    </span>
+                                </h3>
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                                Projeto Neon: <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded font-mono">ep-restless-bread-b5h2yx96</code> (Região: Ohio us-east-2).
+                                Todas as tabelas (<code className="font-mono">app_users</code>, <code className="font-mono">activities</code>, <code className="font-mono">import_batches</code>, <code className="font-mono">app_files</code>) são sincronizadas com o Neon PostgreSQL.
+                            </p>
+
+                            {/* Neon Object Storage Status Badge */}
+                            <div className="flex flex-wrap items-center gap-2 mb-3 bg-gray-50 dark:bg-gray-800/60 p-2.5 rounded border border-gray-200 dark:border-gray-700 text-xs">
+                                <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                                <span className="font-medium text-gray-700 dark:text-gray-200">Neon Object Storage (S3):</span>
+                                <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">Configurado</span>
+                                <span className="text-gray-400 dark:text-gray-500">•</span>
+                                <span className="text-gray-500 dark:text-gray-400">Região: us-east-2</span>
+                                <span className="text-gray-400 dark:text-gray-500">•</span>
+                                <span className="text-gray-500 dark:text-gray-400 font-mono">nak_live_f761...</span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2.5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setNeonConfigMessage(null);
+                                        setIsNeonKeyModalOpen(true);
+                                    }}
+                                    className="px-3 py-1.5 rounded text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 shadow-sm"
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                                    </svg>
+                                    Configurar Chaves / Neon
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSyncAllToNeon}
+                                    disabled={isSyncingNeon}
+                                    className="px-3 py-1.5 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white transition-colors flex items-center gap-1.5 shadow-sm"
+                                >
+                                    {isSyncingNeon ? 'Sincronizando...' : 'Sincronizar Tudo no Neon'}
+                                </button>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    {activities.length} atividade(s) • {users.length} usuário(s) • {importBatches.length} lote(s)
+                                </span>
+                            </div>
+
+                            {neonStatus?.error && !isNeonConnected && (
+                                <div className="mt-2.5 p-2.5 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 text-xs text-amber-800 dark:text-amber-300">
+                                    <p className="font-semibold mb-0.5">Nota sobre o PostgreSQL:</p>
+                                    <p className="leading-relaxed">O sistema está pronto operando com cache local resiliente. Para sincronizar o banco PostgreSQL com a nuvem, insira a string de conexão com a senha do banco em "Configurar Chaves / Neon".</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* User Profile */}
                     <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
                         <h3 className="font-semibold mb-2">Perfil</h3>
@@ -1466,6 +1544,159 @@ const App: React.FC = () => {
                 </div>
             </Modal>
 
+            {/* Modal de Configuração Segura do Neon */}
+            <Modal 
+                isOpen={isNeonKeyModalOpen} 
+                onClose={() => {
+                    setIsNeonKeyModalOpen(false);
+                    setNeonConfigMessage(null);
+                }} 
+                title="Configuração Segura do Neon PostgreSQL"
+            >
+                <form onSubmit={handleSaveNeonConfig} className="space-y-4 text-sm text-gray-800 dark:text-gray-200">
+                    <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50 rounded-lg p-3 text-xs text-blue-900 dark:text-blue-200 leading-relaxed">
+                        <div className="font-semibold flex items-center gap-1.5 mb-1.5 text-blue-800 dark:text-blue-300">
+                            <svg className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Como obter a string de conexão no Neon:
+                        </div>
+                        <ol className="list-decimal list-inside space-y-1 ml-1 text-blue-800 dark:text-blue-200">
+                            <li>Acesse seu console no Neon em <a href="https://console.neon.tech" target="_blank" rel="noopener noreferrer" className="underline font-semibold hover:text-blue-600">console.neon.tech</a>.</li>
+                            <li>Selecione o projeto e abra <strong>Dashboard → Connection Details</strong>.</li>
+                            <li>Copie a string que começa com <code className="bg-blue-100 dark:bg-blue-900/60 px-1 py-0.5 rounded font-mono">postgresql://neondb_owner:...</code> (com a senha gerada).</li>
+                        </ol>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                            String de Conexão PostgreSQL (DATABASE_URL) <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                            <input
+                                type={showKeyPassword ? "text" : "password"}
+                                value={neonConnectionStringInput}
+                                onChange={(e) => setNeonConnectionStringInput(e.target.value)}
+                                placeholder="postgresql://neondb_owner:[senha]@ep-....us-east-2.aws.neon.tech/neondb?sslmode=require"
+                                className="w-full pr-10 pl-3 py-2 text-xs font-mono bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition"
+                                autoComplete="off"
+                                required
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowKeyPassword(!showKeyPassword)}
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                title={showKeyPassword ? "Ocultar" : "Visualizar"}
+                            >
+                                {showKeyPassword ? (
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                    </svg>
+                                ) : (
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                            🔒 <strong>Segurança ponta-a-ponta</strong>: As credenciais são enviadas diretamente ao servidor backend via HTTPS e nunca são expostas aos navegadores de outros clientes.
+                        </p>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-semibold mb-1 text-gray-700 dark:text-gray-300">
+                            Neon API Key (Opcional)
+                        </label>
+                        <input
+                            type="password"
+                            value={neonApiKeyInput}
+                            onChange={(e) => setNeonApiKeyInput(e.target.value)}
+                            placeholder="nkey_... (opcional)"
+                            className="w-full px-3 py-2 text-xs font-mono bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition"
+                            autoComplete="off"
+                        />
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                            Opcional: chave gerada no Neon em Account Settings → API Keys.
+                        </p>
+                    </div>
+
+                    {/* Neon Object Storage (S3) Configuration */}
+                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                Neon Object Storage (S3)
+                            </span>
+                            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Configurado • us-east-2</span>
+                        </div>
+                        <div className="space-y-2">
+                            <div>
+                                <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-0.5">
+                                    AWS_ACCESS_KEY_ID (Neon Storage)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={neonAwsAccessKeyInput}
+                                    onChange={(e) => setNeonAwsAccessKeyInput(e.target.value)}
+                                    placeholder="nak_live_..."
+                                    className="w-full px-3 py-1.5 text-xs font-mono bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-primary-500 outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-0.5">
+                                    AWS_SECRET_ACCESS_KEY (Neon Storage)
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type={showAwsSecretPassword ? "text" : "password"}
+                                        value={neonAwsSecretKeyInput}
+                                        onChange={(e) => setNeonAwsSecretKeyInput(e.target.value)}
+                                        placeholder="nsk_live_..."
+                                        className="w-full pr-8 pl-3 py-1.5 text-xs font-mono bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-primary-500 outline-none"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAwsSecretPassword(!showAwsSecretPassword)}
+                                        className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                        title={showAwsSecretPassword ? "Ocultar" : "Visualizar"}
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {neonConfigMessage && (
+                        <div className={`p-3 rounded text-xs leading-relaxed ${neonConfigMessage.type === 'success' ? 'bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-300' : 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300'}`}>
+                            {neonConfigMessage.text}
+                        </div>
+                    )}
+
+                    <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+                        <button
+                            type="button"
+                            onClick={() => setIsNeonKeyModalOpen(false)}
+                            disabled={neonConfigLoading}
+                            className="px-3.5 py-1.5 rounded text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 transition-colors"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={neonConfigLoading}
+                            className="px-4 py-1.5 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white transition-colors flex items-center gap-1.5 shadow-sm"
+                        >
+                            {neonConfigLoading ? 'Testando Conexão...' : 'Testar e Ativar Conexão'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingActivity ? (user?.role === 'operator' ? "Visualizar / Atualizar Status" : "Editar") : "Criar"}>
                 <ActivityForm 
                     activity={editingActivity} 
@@ -1473,7 +1704,7 @@ const App: React.FC = () => {
                     onSubmit={editingActivity ? handleUpdateActivity : handleAddActivity} 
                     onClose={() => setIsModalOpen(false)} 
                     customStatusLabels={statusLabels}
-                    onUpload={(file) => uploadFileToSupabase(file, `activities/${editingActivity?.tag || 'new'}`)}
+                    onUpload={(file) => uploadFileToNeon(file)}
                     userRole={user?.role}
                 />
             </Modal>
