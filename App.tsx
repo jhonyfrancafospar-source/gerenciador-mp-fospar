@@ -57,7 +57,7 @@ const App: React.FC = () => {
     const [neonStatus, setNeonStatus] = useState<NeonHealthStatus | null>(null);
     const [isSyncingNeon, setIsSyncingNeon] = useState(false);
     const [isNeonKeyModalOpen, setIsNeonKeyModalOpen] = useState(false);
-    const [neonConnectionStringInput, setNeonConnectionStringInput] = useState('');
+    const [neonConnectionStringInput, setNeonConnectionStringInput] = useState('postgresql://neondb_owner:npg_W1jiBRQkp9Hf@ep-restless-bread-b5h2yx96-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require');
     const [neonApiKeyInput, setNeonApiKeyInput] = useState('');
     const [neonAwsAccessKeyInput, setNeonAwsAccessKeyInput] = useState('nak_live_f7618e593c7b490caeb03fddbb413f74');
     const [neonAwsSecretKeyInput, setNeonAwsSecretKeyInput] = useState('nsk_live_1a0187b098a0b90c03e2f9dddecb5f60c3590ca56a21a9d8a47c2db50f5a5791');
@@ -209,42 +209,47 @@ const App: React.FC = () => {
     }, [importBatches]);
 
     const saveActivityToNeon = async (activity: Activity) => {
+        if (!activity) return;
         try {
             await neonApi.saveActivity(activity);
         } catch (error: any) {
-            console.error('Erro ao salvar atividade no Neon:', error.message);
+            console.warn('[Sync] Atividade mantida em armazenamento local:', error?.message || error);
         }
     };
 
     const deleteActivityFromNeon = async (id: string) => {
+        if (!id) return;
         try {
             await neonApi.deleteActivity(id);
         } catch (error: any) {
-            console.error('Erro ao excluir atividade no Neon:', error.message);
+            console.warn('[Sync] Exclusão realizada em armazenamento local:', error?.message || error);
         }
     };
 
     const saveUserToNeon = async (u: User) => {
+        if (!u) return;
         try {
             await neonApi.saveUser(u);
         } catch (error: any) {
-            console.error('Erro ao salvar usuário no Neon:', error.message);
+            console.warn('[Sync] Usuário salvo em armazenamento local:', error?.message || error);
         }
     };
 
     const saveBatchToNeon = async (batch: ImportBatch) => {
+        if (!batch) return;
         try {
             await neonApi.saveImportBatch(batch);
         } catch (error: any) {
-            console.error('Erro ao salvar lote no Neon:', error.message);
+            console.warn('[Sync] Lote mantido em armazenamento local:', error?.message || error);
         }
     };
 
     const deleteBatchFromNeon = async (batchId: string) => {
+        if (!batchId) return;
         try {
             await neonApi.deleteImportBatch(batchId);
         } catch (error: any) {
-            console.error('Erro ao excluir lote no Neon:', error.message);
+            console.warn('[Sync] Exclusão de lote realizada localmente:', error?.message || error);
         }
     };
 

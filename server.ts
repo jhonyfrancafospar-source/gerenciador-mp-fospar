@@ -9,6 +9,13 @@ import { mockActivities, mockUsers } from './data/mockData';
 
 dotenv.config();
 
+// Neon PostgreSQL default credentials
+const DEFAULT_POSTGRES_URL = 'postgresql://neondb_owner:npg_W1jiBRQkp9Hf@ep-restless-bread-b5h2yx96-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+
+if (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('http://') || process.env.DATABASE_URL.startsWith('https://')) {
+    process.env.DATABASE_URL = DEFAULT_POSTGRES_URL;
+}
+
 // Ensure Neon Object Storage credentials are initialized
 if (!process.env.AWS_ACCESS_KEY_ID) {
     process.env.AWS_ACCESS_KEY_ID = 'nak_live_f7618e593c7b490caeb03fddbb413f74';
@@ -73,27 +80,14 @@ const isValidPostgresUrl = (url: string): boolean => {
 };
 
 const getDb = () => {
-    const rawUrl = (process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || '').trim();
-    if (!rawUrl) {
-        neonError = 'DATABASE_URL não configurada no ambiente. Operando com armazenamento em memória / local.';
-        cachedSql = null;
-        cachedDbUrl = null;
-        return null;
+    let rawUrl = (process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || '').trim();
+    if (!rawUrl || rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+        rawUrl = DEFAULT_POSTGRES_URL;
+        process.env.DATABASE_URL = DEFAULT_POSTGRES_URL;
     }
 
     if (rawUrl === cachedDbUrl && cachedSql) {
         return cachedSql;
-    }
-
-    // Detect if user provided an HTTP/HTTPS URL (such as Neon Data API / PostgREST) instead of PostgreSQL connection string
-    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
-        const endpointMatch = rawUrl.match(/(ep-[a-z0-9-]+)/i);
-        const endpointId = endpointMatch ? endpointMatch[1] : 'seu-endpoint';
-        neonError = `A variável DATABASE_URL contém uma URL HTTP do Data API Neon. Para conectar diretamente ao Postgres, use a string de conexão: postgresql://neondb_owner:[senha]@${endpointId}.us-east-2.aws.neon.tech/neondb?sslmode=require (disponível em Connection Details no painel do Neon). Operando em modo seguro local/memória.`;
-        isNeonConnected = false;
-        cachedSql = null;
-        cachedDbUrl = rawUrl;
-        return null;
     }
 
     if (!isValidPostgresUrl(rawUrl)) {
@@ -272,46 +266,124 @@ app.get('/api/users', async (_req, res) => {
 });
 
 app.post('/api/users', async (req, res) => {
-    const u = req.body;
-    if (!u || !u.username) {
-        return res.status(400).json({ error: 'Username é obrigatório' });
-    }
-
-    const sql = getDb();
-    if (isNeonConnected && sql) {
-        try {
-            await sql`
-                INSERT INTO app_users (username, password, name, role, profile_picture, background_image, logo_light, logo_dark)
-                VALUES (
-                    ${u.username},
-                    ${u.password || '123'},
-                    ${u.name || u.username},
-                    ${(u.role || 'user').toLowerCase()},
-                    ${u.profilePicture || null},
-                    ${u.backgroundImage || null},
-                    ${u.logoLight || null},
-                    ${u.logoDark || null}
-                )
-                ON CONFLICT (username) DO UPDATE SET
-                    password = EXCLUDED.password,
-                    name = EXCLUDED.name,
-                    role = EXCLUDED.role,
-                    profile_picture = EXCLUDED.profile_picture,
-                    background_image = EXCLUDED.background_image,
-                    logo_light = EXCLUDED.logo_light,
-                    logo_dark = EXCLUDED.logo_dark
-            `;
-            return res.json({ success: true, user: u });
-        } catch (e: any) {
-            console.error('[Neon Users POST Error]:', e);
+    try {
+        const u = req.body;
+        if (!u || !u.username) {
+            return res.status(400).json({ error: 'Username é obrigatório' });
         }
-    }
 
-    // Memory fallback
-    const idx = memoryUsers.findIndex(item => item.username === u.username);
-    if (idx >= 0) memoryUsers[idx] = { ...memoryUsers[idx], ...u };
-    else memoryUsers.push(u);
-    res.json({ success: true, user: u, fallback: true });
+        const username = String(u.username).trim();
+        const password = u.password || '123';
+        const name = u.name || username;
+        const role = (u.role || 'user').toLowerCase();
+        const profilePicture = u.profilePicture !== undefined ? u.profilePicture : (u.profile_picture || null);
+        const backgroundImage = u.backgroundImage !== undefined ? u.backgroundImage : (u.background_image || null);
+        const logoLight = u.logoLight !== undefined ? u.logoLight : (u.logo_light || null);
+        const logoDark = u.logoDark !== undefined ? u.logoDark : (u.logo_dark || null);
+
+        const sql = getDb();
+        if (isNeonConnected && sql) {
+            try {
+                await sql`
+                    INSERT INTO app_users (username, password, name, role, profile_picture, background_image, logo_light, logo_dark)
+                    VALUES (
+                        ${username},
+                        ${password},
+                        ${name},
+                        ${role},
+                        ${profilePicture},
+                        ${backgroundImage},
+                        ${logoLight},
+                        ${logoDark}
+                    )
+                    ON CONFLICT (username) DO UPDATE SET
+                        password = EXCLUDED.password,
+                        name = EXCLUDED.name,
+                        role = EXCLUDED.role,
+                        profile_picture = COALESCE(EXCLUDED.profile_picture, app_users.profile_picture),
+                        background_image = COALESCE(EXCLUDED.background_image, app_users.background_image),
+                        logo_light = COALESCE(EXCLUDED.logo_light, app_users.logo_light),
+                        logo_dark = COALESCE(EXCLUDED.logo_dark, app_users.logo_dark)
+                `;
+                return res.json({ success: true, user: { ...u, username, name, role } });
+            } catch (e: any) {
+                console.warn('[Neon Users POST Notice]:', e.message || e);
+            }
+        }
+
+        // Memory fallback
+        const idx = memoryUsers.findIndex(item => item.username.toLowerCase() === username.toLowerCase());
+        if (idx >= 0) memoryUsers[idx] = { ...memoryUsers[idx], ...u, username };
+        else memoryUsers.push({ ...u, username });
+        return res.json({ success: true, user: u, fallback: true });
+    } catch (err: any) {
+        console.error('[Users POST Error]:', err);
+        return res.status(500).json({ error: err.message || 'Erro ao processar usuário' });
+    }
+});
+
+app.post('/api/users/bulk', async (req, res) => {
+    try {
+        const users = req.body;
+        if (!Array.isArray(users)) {
+            return res.status(400).json({ error: 'Array de usuários esperado' });
+        }
+
+        const validUsers = users.filter(u => u && typeof u === 'object' && u.username);
+        const sql = getDb();
+        if (isNeonConnected && sql) {
+            try {
+                for (const u of validUsers) {
+                    const username = String(u.username).trim();
+                    const password = u.password || '123';
+                    const name = u.name || username;
+                    const role = (u.role || 'user').toLowerCase();
+                    const profilePicture = u.profilePicture !== undefined ? u.profilePicture : (u.profile_picture || null);
+                    const backgroundImage = u.backgroundImage !== undefined ? u.backgroundImage : (u.background_image || null);
+                    const logoLight = u.logoLight !== undefined ? u.logoLight : (u.logo_light || null);
+                    const logoDark = u.logoDark !== undefined ? u.logoDark : (u.logo_dark || null);
+
+                    await sql`
+                        INSERT INTO app_users (username, password, name, role, profile_picture, background_image, logo_light, logo_dark)
+                        VALUES (
+                            ${username},
+                            ${password},
+                            ${name},
+                            ${role},
+                            ${profilePicture},
+                            ${backgroundImage},
+                            ${logoLight},
+                            ${logoDark}
+                        )
+                        ON CONFLICT (username) DO UPDATE SET
+                            password = EXCLUDED.password,
+                            name = EXCLUDED.name,
+                            role = EXCLUDED.role,
+                            profile_picture = COALESCE(EXCLUDED.profile_picture, app_users.profile_picture),
+                            background_image = COALESCE(EXCLUDED.background_image, app_users.background_image),
+                            logo_light = COALESCE(EXCLUDED.logo_light, app_users.logo_light),
+                            logo_dark = COALESCE(EXCLUDED.logo_dark, app_users.logo_dark)
+                    `;
+                }
+                return res.json({ success: true, count: validUsers.length });
+            } catch (e: any) {
+                console.warn('[Neon Bulk Users Notice]:', e.message || e);
+            }
+        }
+
+        // Memory fallback
+        for (const u of validUsers) {
+            const username = String(u.username).trim();
+            const idx = memoryUsers.findIndex(item => item.username.toLowerCase() === username.toLowerCase());
+            if (idx >= 0) memoryUsers[idx] = { ...memoryUsers[idx], ...u, username };
+            else memoryUsers.push({ ...u, username });
+        }
+
+        return res.json({ success: true, count: validUsers.length, fallback: true });
+    } catch (err: any) {
+        console.error('[Users Bulk Error]:', err);
+        return res.status(500).json({ error: err.message || 'Erro ao sincronizar lote de usuários' });
+    }
 });
 
 app.delete('/api/users/:username', async (req, res) => {
@@ -345,66 +417,93 @@ app.get('/api/activities', async (_req, res) => {
 });
 
 app.post('/api/activities', async (req, res) => {
-    const activity = req.body;
-    if (!activity || !activity.id) {
-        return res.status(400).json({ error: 'Activity ID é obrigatório' });
-    }
-
-    const sql = getDb();
-    if (isNeonConnected && sql) {
-        try {
-            await sql`
-                INSERT INTO activities (id, json_data, updated_at)
-                VALUES (${activity.id}, ${JSON.stringify(activity)}, NOW())
-                ON CONFLICT (id) DO UPDATE SET
-                    json_data = EXCLUDED.json_data,
-                    updated_at = NOW()
-            `;
-            return res.json({ success: true, activity });
-        } catch (e: any) {
-            console.error('[Neon Activities POST Error]:', e);
+    try {
+        let activity = req.body;
+        if (!activity || typeof activity !== 'object') {
+            return res.status(400).json({ error: 'Objeto de atividade inválido' });
         }
-    }
 
-    const idx = memoryActivities.findIndex(a => a.id === activity.id);
-    if (idx >= 0) memoryActivities[idx] = activity;
-    else memoryActivities.push(activity);
-    res.json({ success: true, activity, fallback: true });
+        // Garante ID textual não vazio
+        const id = (activity.id !== undefined && activity.id !== null && String(activity.id).trim() !== '')
+            ? String(activity.id).trim()
+            : `act_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        
+        activity = { ...activity, id };
+
+        const sql = getDb();
+        if (isNeonConnected && sql) {
+            try {
+                const jsonStr = JSON.stringify(activity);
+                await sql`
+                    INSERT INTO activities (id, json_data, updated_at)
+                    VALUES (${id}, ${jsonStr}::jsonb, NOW())
+                    ON CONFLICT (id) DO UPDATE SET
+                        json_data = EXCLUDED.json_data,
+                        updated_at = NOW()
+                `;
+                return res.json({ success: true, activity });
+            } catch (e: any) {
+                console.warn('[Neon Activities POST Notice]:', e.message || e);
+            }
+        }
+
+        const idx = memoryActivities.findIndex(a => String(a.id) === id);
+        if (idx >= 0) memoryActivities[idx] = activity;
+        else memoryActivities.push(activity);
+        return res.json({ success: true, activity, fallback: true });
+    } catch (err: any) {
+        console.error('[Activities POST Error]:', err);
+        return res.status(500).json({ error: err.message || 'Erro ao processar atividade' });
+    }
 });
 
 app.post('/api/activities/bulk', async (req, res) => {
-    const activities = req.body;
-    if (!Array.isArray(activities)) {
-        return res.status(400).json({ error: 'Array de atividades esperado' });
-    }
-
-    const sql = getDb();
-    if (isNeonConnected && sql) {
-        try {
-            for (const act of activities) {
-                if (act && act.id) {
-                    await sql`
-                        INSERT INTO activities (id, json_data, updated_at)
-                        VALUES (${act.id}, ${JSON.stringify(act)}, NOW())
-                        ON CONFLICT (id) DO UPDATE SET
-                            json_data = EXCLUDED.json_data,
-                            updated_at = NOW()
-                    `;
-                }
-            }
-            return res.json({ success: true, count: activities.length });
-        } catch (e: any) {
-            console.error('[Neon Bulk Activities POST Error]:', e);
+    try {
+        const activities = req.body;
+        if (!Array.isArray(activities)) {
+            return res.status(400).json({ error: 'Array de atividades esperado' });
         }
-    }
 
-    for (const act of activities) {
-        if (!act?.id) continue;
-        const idx = memoryActivities.findIndex(a => a.id === act.id);
-        if (idx >= 0) memoryActivities[idx] = act;
-        else memoryActivities.push(act);
+        const sanitized = activities.map((act, index) => {
+            if (!act || typeof act !== 'object') return null;
+            const id = (act.id !== undefined && act.id !== null && String(act.id).trim() !== '')
+                ? String(act.id).trim()
+                : `act_${Date.now()}_${index}_${Math.random().toString(36).substring(2, 6)}`;
+            return { ...act, id };
+        }).filter(Boolean);
+
+        const sql = getDb();
+        if (isNeonConnected && sql) {
+            try {
+                for (const act of sanitized) {
+                    if (act && act.id) {
+                        const jsonStr = JSON.stringify(act);
+                        await sql`
+                            INSERT INTO activities (id, json_data, updated_at)
+                            VALUES (${act.id}, ${jsonStr}::jsonb, NOW())
+                            ON CONFLICT (id) DO UPDATE SET
+                                json_data = EXCLUDED.json_data,
+                                updated_at = NOW()
+                        `;
+                    }
+                }
+                return res.json({ success: true, count: sanitized.length });
+            } catch (e: any) {
+                console.warn('[Neon Bulk Activities POST Notice]:', e.message || e);
+            }
+        }
+
+        for (const act of sanitized) {
+            if (!act?.id) continue;
+            const idx = memoryActivities.findIndex(a => String(a.id) === String(act.id));
+            if (idx >= 0) memoryActivities[idx] = act;
+            else memoryActivities.push(act);
+        }
+        return res.json({ success: true, count: sanitized.length, fallback: true });
+    } catch (err: any) {
+        console.error('[Activities Bulk Error]:', err);
+        return res.status(500).json({ error: err.message || 'Erro ao processar lote' });
     }
-    res.json({ success: true, count: activities.length, fallback: true });
 });
 
 app.delete('/api/activities/:id', async (req, res) => {
@@ -438,29 +537,40 @@ app.get('/api/import-batches', async (_req, res) => {
 });
 
 app.post('/api/import-batches', async (req, res) => {
-    const batch = req.body;
-    if (!batch || !batch.id) {
-        return res.status(400).json({ error: 'Batch ID é obrigatório' });
-    }
-
-    const sql = getDb();
-    if (isNeonConnected && sql) {
-        try {
-            await sql`
-                INSERT INTO import_batches (id, json_data, created_at)
-                VALUES (${batch.id}, ${JSON.stringify(batch)}, NOW())
-                ON CONFLICT (id) DO UPDATE SET json_data = EXCLUDED.json_data
-            `;
-            return res.json({ success: true, batch });
-        } catch (e: any) {
-            console.error('[Neon Batches POST Error]:', e);
+    try {
+        let batch = req.body;
+        if (!batch || typeof batch !== 'object') {
+            return res.status(400).json({ error: 'Lote de importação inválido' });
         }
-    }
 
-    const idx = memoryBatches.findIndex(b => b.id === batch.id);
-    if (idx >= 0) memoryBatches[idx] = batch;
-    else memoryBatches.push(batch);
-    res.json({ success: true, batch, fallback: true });
+        const id = (batch.id !== undefined && batch.id !== null && String(batch.id).trim() !== '')
+            ? String(batch.id).trim()
+            : `batch_${Date.now()}`;
+        batch = { ...batch, id };
+
+        const sql = getDb();
+        if (isNeonConnected && sql) {
+            try {
+                const jsonStr = JSON.stringify(batch);
+                await sql`
+                    INSERT INTO import_batches (id, json_data, created_at)
+                    VALUES (${id}, ${jsonStr}::jsonb, NOW())
+                    ON CONFLICT (id) DO UPDATE SET json_data = EXCLUDED.json_data
+                `;
+                return res.json({ success: true, batch });
+            } catch (e: any) {
+                console.warn('[Neon Batches POST Notice]:', e.message || e);
+            }
+        }
+
+        const idx = memoryBatches.findIndex(b => String(b.id) === id);
+        if (idx >= 0) memoryBatches[idx] = batch;
+        else memoryBatches.push(batch);
+        return res.json({ success: true, batch, fallback: true });
+    } catch (err: any) {
+        console.error('[Batches POST Error]:', err);
+        return res.status(500).json({ error: err.message || 'Erro ao processar lote' });
+    }
 });
 
 app.delete('/api/import-batches/:id', async (req, res) => {

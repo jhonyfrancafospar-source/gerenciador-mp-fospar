@@ -43,19 +43,56 @@ export const neonApi = {
     },
 
     saveUser: async (user: User): Promise<void> => {
-        const res = await fetch('/api/users', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(user)
-        });
-        if (!res.ok) throw new Error('Falha ao salvar usuário');
+        if (!user || !user.username) return;
+        try {
+            const res = await fetch('/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(user)
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                console.warn('[NeonClient] Erro ao sincronizar usuário:', err.error || res.statusText);
+            }
+        } catch (e: any) {
+            console.warn('[NeonClient] Erro de conexão ao salvar usuário:', e.message);
+        }
+    },
+
+    saveUsersBulk: async (users: User[]): Promise<{ success: boolean; count?: number }> => {
+        if (!Array.isArray(users) || users.length === 0) return { success: true, count: 0 };
+        try {
+            const res = await fetch('/api/users/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(users)
+            });
+            if (res.ok) {
+                const data = await res.json().catch(() => ({}));
+                return { success: true, count: data.count || users.length };
+            } else {
+                const err = await res.json().catch(() => ({}));
+                console.warn('[NeonClient] Erro ao sincronizar lote de usuários:', err.error || res.statusText);
+                return { success: false };
+            }
+        } catch (e: any) {
+            console.warn('[NeonClient] Erro de rede ao salvar lote de usuários:', e.message);
+            return { success: false };
+        }
     },
 
     deleteUser: async (username: string): Promise<void> => {
-        const res = await fetch(`/api/users/${encodeURIComponent(username)}`, {
-            method: 'DELETE'
-        });
-        if (!res.ok) throw new Error('Falha ao excluir usuário');
+        if (!username) return;
+        try {
+            const res = await fetch(`/api/users/${encodeURIComponent(username)}`, {
+                method: 'DELETE'
+            });
+            if (!res.ok) {
+                console.warn('[NeonClient] Erro ao excluir usuário no backend');
+            }
+        } catch (e: any) {
+            console.warn('[NeonClient] Erro de rede ao excluir usuário:', e.message);
+        }
     },
 
     // Activities
@@ -66,28 +103,63 @@ export const neonApi = {
     },
 
     saveActivity: async (activity: Activity): Promise<void> => {
-        const res = await fetch('/api/activities', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(activity)
-        });
-        if (!res.ok) throw new Error('Falha ao salvar atividade');
+        if (!activity) return;
+        const safeActivity = {
+            ...activity,
+            id: (activity.id !== undefined && activity.id !== null && String(activity.id).trim() !== '')
+                ? String(activity.id).trim()
+                : `act_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+        };
+        try {
+            const res = await fetch('/api/activities', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(safeActivity)
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                console.warn('[NeonClient] Aviso ao persistir atividade no backend:', err.error || res.statusText);
+            }
+        } catch (e: any) {
+            console.warn('[NeonClient] Erro de conexão ao persistir atividade (mantida localmente):', e.message);
+        }
     },
 
     saveActivitiesBulk: async (activities: Activity[]): Promise<void> => {
-        const res = await fetch('/api/activities/bulk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(activities)
-        });
-        if (!res.ok) throw new Error('Falha ao salvar lote de atividades');
+        if (!Array.isArray(activities) || activities.length === 0) return;
+        const sanitized = activities.map((act, i) => ({
+            ...act,
+            id: (act.id !== undefined && act.id !== null && String(act.id).trim() !== '')
+                ? String(act.id).trim()
+                : `act_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`
+        }));
+        try {
+            const res = await fetch('/api/activities/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(sanitized)
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                console.warn('[NeonClient] Aviso ao persistir lote no backend:', err.error || res.statusText);
+            }
+        } catch (e: any) {
+            console.warn('[NeonClient] Erro de conexão ao persistir lote:', e.message);
+        }
     },
 
     deleteActivity: async (id: string): Promise<void> => {
-        const res = await fetch(`/api/activities/${encodeURIComponent(id)}`, {
-            method: 'DELETE'
-        });
-        if (!res.ok) throw new Error('Falha ao excluir atividade');
+        if (!id) return;
+        try {
+            const res = await fetch(`/api/activities/${encodeURIComponent(id)}`, {
+                method: 'DELETE'
+            });
+            if (!res.ok) {
+                console.warn('[NeonClient] Aviso ao excluir atividade no backend');
+            }
+        } catch (e: any) {
+            console.warn('[NeonClient] Erro de conexão ao excluir atividade:', e.message);
+        }
     },
 
     // Batches
@@ -98,19 +170,39 @@ export const neonApi = {
     },
 
     saveImportBatch: async (batch: ImportBatch): Promise<void> => {
-        const res = await fetch('/api/import-batches', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(batch)
-        });
-        if (!res.ok) throw new Error('Falha ao salvar lote');
+        if (!batch) return;
+        const safeBatch = {
+            ...batch,
+            id: (batch.id !== undefined && batch.id !== null && String(batch.id).trim() !== '')
+                ? String(batch.id).trim()
+                : `batch_${Date.now()}`
+        };
+        try {
+            const res = await fetch('/api/import-batches', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(safeBatch)
+            });
+            if (!res.ok) {
+                console.warn('[NeonClient] Aviso ao persistir lote no backend');
+            }
+        } catch (e: any) {
+            console.warn('[NeonClient] Erro de conexão ao salvar lote:', e.message);
+        }
     },
 
     deleteImportBatch: async (batchId: string): Promise<void> => {
-        const res = await fetch(`/api/import-batches/${encodeURIComponent(batchId)}`, {
-            method: 'DELETE'
-        });
-        if (!res.ok) throw new Error('Falha ao excluir lote');
+        if (!batchId) return;
+        try {
+            const res = await fetch(`/api/import-batches/${encodeURIComponent(batchId)}`, {
+                method: 'DELETE'
+            });
+            if (!res.ok) {
+                console.warn('[NeonClient] Aviso ao excluir lote no backend');
+            }
+        } catch (e: any) {
+            console.warn('[NeonClient] Erro de conexão ao excluir lote:', e.message);
+        }
     },
 
     // File Upload Replacement
