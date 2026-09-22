@@ -89,11 +89,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
         }
     };
 
-    const handleQuickFill = (u: string, p: string) => {
-        setUsername(u);
-        setPassword(p);
-    };
-
     return (
         <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col justify-center items-center p-4">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md overflow-hidden">
@@ -158,7 +153,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                                     onChange={e => setUsername(e.target.value)} 
                                     className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
                                     required 
-                                    placeholder="Ex: admin ou jhony"
+                                    placeholder="Digite seu usuário"
                                     autoComplete="username"
                                 />
                             </div>
@@ -216,36 +211,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                             )}
                         </button>
                     </form>
-
-                    {/* Quick fill helper for login */}
-                    {viewMode === 'login' && (
-                        <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Acesso rápido (Neon DB):</p>
-                            <div className="flex flex-wrap gap-1.5">
-                                <button
-                                    type="button"
-                                    onClick={() => handleQuickFill('admin', '123')}
-                                    className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-mono transition-colors"
-                                >
-                                    admin / 123 (Admin)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => handleQuickFill('jhony', '123')}
-                                    className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-mono transition-colors"
-                                >
-                                    jhony / 123 (Admin)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => handleQuickFill('anderson', '123')}
-                                    className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-mono transition-colors"
-                                >
-                                    anderson / 123
-                                </button>
-                            </div>
-                        </div>
-                    )}
 
                     <div className="flex flex-col items-center space-y-2 text-sm pt-2">
                         {viewMode === 'login' ? (
