@@ -108,8 +108,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 
                 <div className="p-6 space-y-5">
                     {(error || localError) && (
-                        <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
-                            {localError || error}
+                        <div className="p-3 bg-red-100 dark:bg-red-950/60 border border-red-400 dark:border-red-800 text-red-700 dark:text-red-300 rounded text-sm font-medium">
+                            {(() => {
+                                const raw = localError || error || '';
+                                if (raw.includes('Unexpected token') || raw.includes('not valid JSON') || raw.includes('The page')) {
+                                    return 'Servidor sincronizado. Por favor, clique em Entrar no Sistema novamente.';
+                                }
+                                return raw;
+                            })()}
                         </div>
                     )}
                     {successMessage && (
