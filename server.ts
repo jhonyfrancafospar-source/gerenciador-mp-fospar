@@ -241,6 +241,80 @@ app.get('/api/health', async (_req, res) => {
     });
 });
 
+// AUTH & LOGIN DIRECT TO NEON POSTGRESQL
+app.post('/api/login', async (req, res) => {
+    try {
+        const { username, password } = req.body || {};
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Usuário e senha são obrigatórios' });
+        }
+
+        const cleanUsername = String(username).trim();
+        const cleanPassword = String(password).trim();
+        const sql = getDb();
+
+        if (isNeonConnected && sql) {
+            try {
+                const rows = await sql`
+                    SELECT username, password, name, role, profile_picture, background_image, logo_light, logo_dark
+                    FROM app_users
+                    WHERE LOWER(username) = LOWER(${cleanUsername})
+                    LIMIT 1
+                `;
+                if (rows.length > 0) {
+                    const u = rows[0];
+                    if (u.password === cleanPassword) {
+                        return res.json({
+                            success: true,
+                            user: {
+                                username: u.username,
+                                name: u.name,
+                                role: (u.role || 'user').toLowerCase(),
+                                profilePicture: u.profile_picture || null,
+                                backgroundImage: u.background_image || null,
+                                logoLight: u.logo_light || null,
+                                logoDark: u.logo_dark || null
+                            }
+                        });
+                    } else {
+                        return res.status(401).json({ error: 'Senha incorreta.' });
+                    }
+                }
+            } catch (err: any) {
+                console.error('[Neon Login Error]:', err);
+            }
+        }
+
+        // Memory fallback check
+        const memUser = memoryUsers.find(
+            u => u.username.toLowerCase() === cleanUsername.toLowerCase()
+        );
+        if (memUser) {
+            if (memUser.password === cleanPassword) {
+                return res.json({
+                    success: true,
+                    user: {
+                        username: memUser.username,
+                        name: memUser.name,
+                        role: (memUser.role || 'user').toLowerCase(),
+                        profilePicture: memUser.profilePicture || null,
+                        backgroundImage: memUser.backgroundImage || null,
+                        logoLight: memUser.logoLight || null,
+                        logoDark: memUser.logoDark || null
+                    }
+                });
+            } else {
+                return res.status(401).json({ error: 'Senha incorreta.' });
+            }
+        }
+
+        return res.status(404).json({ error: 'Usuário não encontrado no banco de dados.' });
+    } catch (e: any) {
+        console.error('[API Login Error]:', e);
+        return res.status(500).json({ error: e.message || 'Erro ao autenticar usuário' });
+    }
+});
+
 // USERS
 app.get('/api/users', async (_req, res) => {
     const sql = getDb();

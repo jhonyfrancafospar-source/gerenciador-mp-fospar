@@ -8,11 +8,21 @@ interface LoginViewProps {
     onRecoverPassword: (username: string, name: string, newPassword: string) => boolean;
     onRecoverUsername: (name: string) => string | null;
     error?: string;
+    isLoading?: boolean;
+    isNeonConnected?: boolean;
 }
 
 type ViewMode = 'login' | 'register' | 'recover' | 'recoverUsername';
 
-export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRecoverPassword, onRecoverUsername, error }) => {
+export const LoginView: React.FC<LoginViewProps> = ({ 
+    onLogin, 
+    onRegister, 
+    onRecoverPassword, 
+    onRecoverUsername, 
+    error,
+    isLoading = false,
+    isNeonConnected = true
+}) => {
     const [viewMode, setViewMode] = useState<ViewMode>('login');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -55,41 +65,50 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
                 setLocalError('As senhas não coincidem.');
                 return;
             }
-            // ... (rest of validation) ...
             const newUser: User = {
-                username,
+                username: username.trim(),
                 password,
-                name,
+                name: name.trim() || username.trim(),
                 role
             };
             onRegister(newUser);
         } else if (viewMode === 'recover') {
-             // ... recovery logic ...
-             const success = onRecoverPassword(username, name, password);
+             const success = onRecoverPassword(username.trim(), name.trim(), password);
              if (success) {
-                 setSuccessMessage('Senha atualizada.');
+                 setSuccessMessage('Senha atualizada com sucesso no banco de dados!');
                  setTimeout(() => handleModeChange('login'), 2000);
              } else {
-                 setLocalError('Dados incorretos.');
+                 setLocalError('Dados incorretos. Verifique o usuário e nome.');
              }
         } else if (viewMode === 'recoverUsername') {
-             const ret = onRecoverUsername(name);
-             if (ret) setSuccessMessage(`Usuário: ${ret}`);
-             else setLocalError('Não encontrado.');
+             const ret = onRecoverUsername(name.trim());
+             if (ret) setSuccessMessage(`Usuário encontrado: @${ret}`);
+             else setLocalError('Nenhum usuário encontrado com esse nome.');
         } else {
-            onLogin(username, password);
+            onLogin(username.trim(), password);
         }
+    };
+
+    const handleQuickFill = (u: string, p: string) => {
+        setUsername(u);
+        setPassword(p);
     };
 
     return (
         <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col justify-center items-center p-4">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md overflow-hidden">
-                <div className="p-8 text-center border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                <div className="p-6 text-center border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
                     <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Gerenciador MP</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Plataforma de Gestão de Atividades</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Plataforma de Gestão de Atividades</p>
+                    
+                    {/* Database status pill */}
+                    <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800">
+                        <span className={`w-2 h-2 rounded-full ${isNeonConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                        <span>{isNeonConnected ? 'Neon PostgreSQL Conectado' : 'Conectando ao Neon...'}</span>
+                    </div>
                 </div>
                 
-                <div className="p-8 space-y-6">
+                <div className="p-6 space-y-5">
                     {(error || localError) && (
                         <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
                             {localError || error}
@@ -105,7 +124,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
                         {viewMode === 'register' && (
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nome Completo</label>
-                                <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" required placeholder="Seu nome exato" />
+                                <input 
+                                    type="text" 
+                                    value={name} 
+                                    onChange={e => setName(e.target.value)} 
+                                    className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
+                                    required 
+                                    placeholder="Ex: Carlos Silva" 
+                                />
                             </div>
                         )}
 
@@ -126,14 +152,31 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
                         {(viewMode === 'login' || viewMode === 'register' || viewMode === 'recover') && (
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Usuário</label>
-                                <input type="text" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                <input 
+                                    type="text" 
+                                    value={username} 
+                                    onChange={e => setUsername(e.target.value)} 
+                                    className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
+                                    required 
+                                    placeholder="Ex: admin ou jhony"
+                                    autoComplete="username"
+                                />
                             </div>
                         )}
 
                         {(viewMode === 'login' || viewMode === 'register' || viewMode === 'recover') && (
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{viewMode === 'recover' ? 'Nova Senha' : 'Senha'}</label>
-                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    {viewMode === 'recover' ? 'Nova Senha' : 'Senha'}
+                                </label>
+                                <input 
+                                    type="password" 
+                                    value={password} 
+                                    onChange={e => setPassword(e.target.value)} 
+                                    className="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
+                                    required 
+                                    autoComplete="current-password"
+                                />
                             </div>
                         )}
 
@@ -158,36 +201,77 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister, onRec
                             </>
                         )}
 
-                        <button type="submit" className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2 px-4 rounded transition-colors">
-                            {viewMode === 'login' ? 'Entrar' : viewMode === 'register' ? 'Cadastrar' : viewMode === 'recover' ? 'Redefinir Senha' : 'Recuperar'}
+                        <button 
+                            type="submit" 
+                            disabled={isLoading}
+                            className="w-full bg-cyan-700 hover:bg-cyan-800 disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded transition-colors flex items-center justify-center gap-2 shadow-sm"
+                        >
+                            {isLoading ? (
+                                <>
+                                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    <span>Verificando credenciais no Neon...</span>
+                                </>
+                            ) : (
+                                <span>{viewMode === 'login' ? 'Entrar no Sistema' : viewMode === 'register' ? 'Cadastrar e Salvar' : viewMode === 'recover' ? 'Redefinir Senha' : 'Recuperar'}</span>
+                            )}
                         </button>
                     </form>
 
-                    <div className="flex flex-col items-center space-y-2 text-sm">
+                    {/* Quick fill helper for login */}
+                    {viewMode === 'login' && (
+                        <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Acesso rápido (Neon DB):</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => handleQuickFill('admin', '123')}
+                                    className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-mono transition-colors"
+                                >
+                                    admin / 123 (Admin)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleQuickFill('jhony', '123')}
+                                    className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-mono transition-colors"
+                                >
+                                    jhony / 123 (Admin)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleQuickFill('anderson', '123')}
+                                    className="px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-mono transition-colors"
+                                >
+                                    anderson / 123
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex flex-col items-center space-y-2 text-sm pt-2">
                         {viewMode === 'login' ? (
                             <>
-                                <button type="button" onClick={() => handleModeChange('register')} className="text-primary-600 hover:underline">
+                                <button type="button" onClick={() => handleModeChange('register')} className="text-cyan-700 dark:text-cyan-400 hover:underline font-medium">
                                     Criar nova conta
                                 </button>
                                 <div className="flex space-x-2">
-                                    <button type="button" onClick={() => handleModeChange('recover')} className="text-gray-500 hover:text-gray-700 dark:text-gray-400">
+                                    <button type="button" onClick={() => handleModeChange('recover')} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 text-xs">
                                         Esqueci minha senha
                                     </button>
                                     <span className="text-gray-300">|</span>
-                                    <button type="button" onClick={() => handleModeChange('recoverUsername')} className="text-gray-500 hover:text-gray-700 dark:text-gray-400">
+                                    <button type="button" onClick={() => handleModeChange('recoverUsername')} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 text-xs">
                                         Esqueci meu usuário
                                     </button>
                                 </div>
                             </>
                         ) : (
-                            <button type="button" onClick={() => handleModeChange('login')} className="text-primary-600 hover:underline">
+                            <button type="button" onClick={() => handleModeChange('login')} className="text-cyan-700 dark:text-cyan-400 hover:underline font-medium">
                                 Voltar para o Login
                             </button>
                         )}
                     </div>
                 </div>
-                <div className="p-4 text-center text-xs text-gray-400 border-t border-gray-200 dark:border-gray-700">
-                    &copy; 2025 Gerenciador de Atividades MP
+                <div className="p-3 text-center text-xs text-gray-400 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                    &copy; 2025 Gerenciador de Atividades MP &bull; Neon PostgreSQL
                 </div>
             </div>
         </div>

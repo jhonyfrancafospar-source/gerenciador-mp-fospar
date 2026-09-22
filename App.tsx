@@ -39,13 +39,42 @@ const App: React.FC = () => {
         return 'light';
     });
 
-    const [users, setUsers] = useState<User[]>([]);
+    const [users, setUsers] = useState<User[]>(() => {
+        const stored = safeStorage.getItem('db_users_secure');
+        if (stored) {
+            try {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            } catch (e) {}
+        }
+        return mockUsers;
+    });
     const [activities, setActivities] = useState<Activity[]>([]);
     const [importBatches, setImportBatches] = useState<ImportBatch[]>([]);
     const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
     
-    const [user, setUser] = useState<User | null>(null);
+    const [user, setUser] = useState<User | null>(() => {
+        const session = safeStorage.getItem('current_user_session');
+        if (session) {
+            try {
+                return JSON.parse(session);
+            } catch (e) {}
+        }
+        return null;
+    });
     const [loginError, setLoginError] = useState<string | undefined>();
+    const [isLoggingIn, setIsLoggingIn] = useState(false);
+    
+    // User management in Settings modal
+    const [newUserName, setNewUserName] = useState('');
+    const [newUserUsername, setNewUserUsername] = useState('');
+    const [newUserPassword, setNewUserPassword] = useState('123');
+    const [newUserRole, setNewUserRole] = useState<'admin' | 'user' | 'operator'>('user');
+    const [isCreatingUser, setIsCreatingUser] = useState(false);
+    const [userSyncMessage, setUserSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [isSavingUsersToNeon, setIsSavingUsersToNeon] = useState(false);
+    const [showAddUserForm, setShowAddUserForm] = useState(false);
+
     const [currentView, setCurrentView] = useState<ViewType>('dashboard');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -115,14 +144,19 @@ const App: React.FC = () => {
                 const isOnline = health.neonConnected || health.status === 'ok';
                 setIsNeonConnected(isOnline);
 
-                // 1. Users
+                // 1. Users from Neon
                 try {
                     const usersData = await neonApi.getUsers();
                     if (usersData && usersData.length > 0) {
                         setUsers(usersData);
+                        safeStorage.setItem('db_users_secure', JSON.stringify(usersData));
                     } else {
                         const storedUsers = safeStorage.getItem('db_users_secure');
-                        setUsers(storedUsers ? JSON.parse(storedUsers) : mockUsers);
+                        const fallbackUsers = storedUsers ? JSON.parse(storedUsers) : mockUsers;
+                        setUsers(fallbackUsers);
+                        if (isOnline && fallbackUsers.length > 0) {
+                            await neonApi.saveUsersBulk(fallbackUsers);
+                        }
                     }
                 } catch (e) {
                     console.warn('[Neon] Erro ao carregar usuários da API:', e);
@@ -351,44 +385,90 @@ const App: React.FC = () => {
         setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
     };
 
-    // --- LOGIN LOGIC ---
+    // --- LOGIN & AUTH LOGIC WITH NEON POSTGRESQL ---
 
-    const handleLogin = (usernameInput: string, passwordInput: string) => {
-        const foundUser = users.find(u => 
-            u.username.toLowerCase() === usernameInput.toLowerCase() && 
-            u.password === passwordInput
-        );
-        if (foundUser) {
-            setUser(foundUser);
-            setLoginError(undefined);
-        } else {
-            setLoginError('Usuário ou senha incorretos.');
+    const handleLogin = async (usernameInput: string, passwordInput: string) => {
+        setIsLoggingIn(true);
+        setLoginError(undefined);
+
+        const cleanUsername = usernameInput.trim();
+        const cleanPassword = passwordInput.trim();
+
+        try {
+            // First attempt: Direct Neon PostgreSQL backend verification
+            const res = await neonApi.login(cleanUsername, cleanPassword);
+            if (res.success && res.user) {
+                setUser(res.user);
+                safeStorage.setItem('current_user_session', JSON.stringify(res.user));
+                setLoginError(undefined);
+                setIsLoggingIn(false);
+                return;
+            }
+
+            // Second attempt: In-memory/cached users list check
+            const foundUser = users.find(u => 
+                u.username.toLowerCase() === cleanUsername.toLowerCase() && 
+                u.password === cleanPassword
+            );
+            if (foundUser) {
+                setUser(foundUser);
+                safeStorage.setItem('current_user_session', JSON.stringify(foundUser));
+                setLoginError(undefined);
+            } else {
+                setLoginError(res.error || 'Usuário ou senha incorretos.');
+            }
+        } catch (err: any) {
+            console.error('[Login Error]:', err);
+            const foundUser = users.find(u => 
+                u.username.toLowerCase() === cleanUsername.toLowerCase() && 
+                u.password === cleanPassword
+            );
+            if (foundUser) {
+                setUser(foundUser);
+                safeStorage.setItem('current_user_session', JSON.stringify(foundUser));
+                setLoginError(undefined);
+            } else {
+                setLoginError('Falha ao autenticar. Verifique o usuário e senha.');
+            }
+        } finally {
+            setIsLoggingIn(false);
         }
     };
 
     const handleRegister = async (newUser: User) => {
-        const exists = users.some(u => u.username.toLowerCase() === newUser.username.toLowerCase());
+        const cleanUsername = newUser.username.trim().toLowerCase();
+        const exists = users.some(u => u.username.toLowerCase() === cleanUsername);
         if (exists) {
-            alert("Usuário já existe.");
+            alert("Usuário já existe no sistema.");
             return;
         }
         
-        setUsers(prev => [...prev, newUser]);
-        setUser(newUser);
-        await saveUserToNeon(newUser);
+        const userObj: User = {
+            ...newUser,
+            username: cleanUsername,
+            role: newUser.role || 'user'
+        };
+
+        const updatedUsers = [...users, userObj];
+        setUsers(updatedUsers);
+        setUser(userObj);
+        safeStorage.setItem('current_user_session', JSON.stringify(userObj));
+        safeStorage.setItem('db_users_secure', JSON.stringify(updatedUsers));
+        await saveUserToNeon(userObj);
     };
 
     const handleRecoverPassword = (username: string, name: string, newPassword: string): boolean => {
         const userIdx = users.findIndex(u => 
-            u.username.toLowerCase() === username.toLowerCase() && 
-            u.name.toLowerCase() === name.toLowerCase()
+            u.username.toLowerCase() === username.toLowerCase().trim() && 
+            u.name.toLowerCase() === name.toLowerCase().trim()
         );
         
         if (userIdx !== -1) {
-            const updatedUser = { ...users[userIdx], password: newPassword };
+            const updatedUser = { ...users[userIdx], password: newPassword.trim() };
             const newUsers = [...users];
             newUsers[userIdx] = updatedUser;
             setUsers(newUsers);
+            safeStorage.setItem('db_users_secure', JSON.stringify(newUsers));
             saveUserToNeon(updatedUser);
             return true;
         }
@@ -396,12 +476,121 @@ const App: React.FC = () => {
     };
 
     const handleRecoverUsername = (name: string): string | null => {
-        const found = users.find(u => u.name.toLowerCase() === name.toLowerCase());
+        const found = users.find(u => u.name.toLowerCase() === name.toLowerCase().trim());
         return found ? found.username : null;
     };
 
     const handleLogout = async () => {
         setUser(null);
+        safeStorage.removeItem('current_user_session');
+    };
+
+    // --- ADMIN USER MANAGEMENT HANDLERS ---
+
+    const handleCreateUserAdmin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newUserUsername.trim() || !newUserName.trim()) {
+            setUserSyncMessage({ type: 'error', text: 'Nome e usuário são obrigatórios.' });
+            return;
+        }
+
+        const cleanUsername = newUserUsername.trim().toLowerCase();
+        if (users.some(u => u.username.toLowerCase() === cleanUsername)) {
+            setUserSyncMessage({ type: 'error', text: 'Já existe um usuário com este username.' });
+            return;
+        }
+
+        setIsCreatingUser(true);
+        setUserSyncMessage(null);
+
+        const createdUser: User = {
+            username: cleanUsername,
+            name: newUserName.trim(),
+            password: newUserPassword.trim() || '123',
+            role: newUserRole
+        };
+
+        try {
+            await neonApi.saveUser(createdUser);
+            const nextUsers = [...users, createdUser];
+            setUsers(nextUsers);
+            safeStorage.setItem('db_users_secure', JSON.stringify(nextUsers));
+            setNewUserName('');
+            setNewUserUsername('');
+            setNewUserPassword('123');
+            setNewUserRole('user');
+            setShowAddUserForm(false);
+            setUserSyncMessage({ type: 'success', text: `Usuário @${cleanUsername} gravado com sucesso no Neon PostgreSQL!` });
+        } catch (err: any) {
+            setUserSyncMessage({ type: 'error', text: err.message || 'Erro ao gravar usuário no Neon.' });
+        } finally {
+            setIsCreatingUser(false);
+            setTimeout(() => setUserSyncMessage(null), 5000);
+        }
+    };
+
+    const handleUpdateUserRole = async (targetUsername: string, newRole: 'admin' | 'user' | 'operator') => {
+        const target = users.find(u => u.username === targetUsername);
+        if (!target) return;
+        const updated: User = { ...target, role: newRole };
+        try {
+            await neonApi.saveUser(updated);
+            const nextUsers = users.map(u => u.username === targetUsername ? updated : u);
+            setUsers(nextUsers);
+            safeStorage.setItem('db_users_secure', JSON.stringify(nextUsers));
+            if (user && user.username === targetUsername) {
+                setUser(updated);
+                safeStorage.setItem('current_user_session', JSON.stringify(updated));
+            }
+            setUserSyncMessage({ type: 'success', text: `Perfil de @${targetUsername} alterado para "${newRole}" no Neon!` });
+        } catch (err: any) {
+            setUserSyncMessage({ type: 'error', text: 'Erro ao sincronizar perfil no Neon.' });
+        }
+        setTimeout(() => setUserSyncMessage(null), 3000);
+    };
+
+    const handleResetUserPassword = async (targetUsername: string) => {
+        const newPass = window.prompt(`Digite a nova senha para o usuário @${targetUsername}:`, '123');
+        if (!newPass || !newPass.trim()) return;
+        const target = users.find(u => u.username === targetUsername);
+        if (!target) return;
+        const updated: User = { ...target, password: newPass.trim() };
+        try {
+            await neonApi.saveUser(updated);
+            const nextUsers = users.map(u => u.username === targetUsername ? updated : u);
+            setUsers(nextUsers);
+            safeStorage.setItem('db_users_secure', JSON.stringify(nextUsers));
+            setUserSyncMessage({ type: 'success', text: `Senha de @${targetUsername} redefinida com sucesso no Neon!` });
+        } catch (err: any) {
+            setUserSyncMessage({ type: 'error', text: 'Erro ao redefinir senha no Neon.' });
+        }
+        setTimeout(() => setUserSyncMessage(null), 3000);
+    };
+
+    const handleSyncAllUsersToNeon = async () => {
+        setIsSavingUsersToNeon(true);
+        setUserSyncMessage(null);
+        try {
+            const res = await neonApi.saveUsersBulk(users);
+            if (res.success) {
+                setUserSyncMessage({ 
+                    type: 'success', 
+                    text: `Todos os ${users.length} usuários sincronizados com sucesso no Neon PostgreSQL!` 
+                });
+                const refreshed = await neonApi.getUsers();
+                if (refreshed && refreshed.length > 0) {
+                    setUsers(refreshed);
+                    safeStorage.setItem('db_users_secure', JSON.stringify(refreshed));
+                }
+            } else {
+                setUserSyncMessage({ type: 'error', text: 'Falha ao sincronizar usuários com o Neon.' });
+            }
+        } catch (err: any) {
+            setUserSyncMessage({ type: 'error', text: err.message || 'Erro de rede ao sincronizar com o Neon.' });
+        } finally {
+            setIsSavingUsersToNeon(false);
+            setTimeout(() => setUserSyncMessage(null), 5000);
+        }
     };
 
     // --- ACTION HANDLERS ---
@@ -1191,7 +1380,17 @@ const App: React.FC = () => {
     }, [activities]);
 
     if (!user) {
-        return <LoginView onLogin={handleLogin} onRegister={handleRegister} onRecoverPassword={handleRecoverPassword} onRecoverUsername={handleRecoverUsername} error={loginError} />;
+        return (
+            <LoginView 
+                onLogin={handleLogin} 
+                onRegister={handleRegister} 
+                onRecoverPassword={handleRecoverPassword} 
+                onRecoverUsername={handleRecoverUsername} 
+                error={loginError}
+                isLoading={isLoggingIn}
+                isNeonConnected={isNeonConnected}
+            />
+        );
     }
 
     const userBackground = user.backgroundImage;
@@ -1469,23 +1668,177 @@ const App: React.FC = () => {
                     {/* Manage Users (Admin Only) */}
                     {user.role === 'admin' && (
                         <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
-                            <h3 className="font-semibold mb-2">Gerenciar Usuários</h3>
-                            <div className="space-y-2 max-h-40 overflow-y-auto">
-                                {users.map(u => (
-                                    <div key={u.username} className="flex justify-between items-center bg-gray-50 dark:bg-gray-700 p-2 rounded text-sm">
-                                        <div>
-                                            <span className="font-medium block">{u.name}</span>
-                                            <span className="text-xs text-gray-500 dark:text-gray-400">@{u.username} ({u.role})</span>
-                                        </div>
-                                        {u.username !== user.username && (
-                                            <button 
-                                                onClick={() => handleDeleteUser(u.username)} 
-                                                className="text-red-600 hover:text-red-800 p-1"
-                                                title="Excluir Usuário"
-                                            >
-                                                <TrashIcon className="w-4 h-4" />
-                                            </button>
+                            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <div>
+                                    <h3 className="font-semibold text-base flex items-center gap-2">
+                                        <span>Gerenciar Usuários</span>
+                                        <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900/50 dark:text-cyan-300 font-mono">
+                                            {users.length} usuários
+                                        </span>
+                                    </h3>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">Banco de Dados Neon PostgreSQL</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleSyncAllUsersToNeon}
+                                        disabled={isSavingUsersToNeon}
+                                        className="text-xs font-semibold px-2.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white flex items-center gap-1 transition-colors shadow-sm"
+                                        title="Grava todos os usuários diretamente no Neon PostgreSQL"
+                                    >
+                                        {isSavingUsersToNeon ? (
+                                            <>
+                                                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                <span>Gravando...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span>⚡ Sincronizar no Neon</span>
+                                            </>
                                         )}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAddUserForm(prev => !prev)}
+                                        className="text-xs font-semibold px-2.5 py-1.5 rounded bg-cyan-700 hover:bg-cyan-800 text-white flex items-center gap-1 transition-colors shadow-sm"
+                                    >
+                                        <span>{showAddUserForm ? 'Fechar Formulário' : '+ Novo Usuário'}</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* User Sync Message feedback */}
+                            {userSyncMessage && (
+                                <div className={`p-2.5 mb-3 rounded text-xs border ${
+                                    userSyncMessage.type === 'success' 
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800' 
+                                        : 'bg-red-50 text-red-800 border-red-300 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800'
+                                }`}>
+                                    {userSyncMessage.text}
+                                </div>
+                            )}
+
+                            {/* Add User Form */}
+                            {showAddUserForm && (
+                                <form onSubmit={handleCreateUserAdmin} className="p-3 mb-3 bg-gray-50 dark:bg-gray-750 border border-gray-200 dark:border-gray-600 rounded-lg space-y-3">
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">Novo Usuário no Neon</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                        <div>
+                                            <label className="block text-gray-600 dark:text-gray-400 mb-1">Nome Completo</label>
+                                            <input 
+                                                type="text" 
+                                                value={newUserName} 
+                                                onChange={e => setNewUserName(e.target.value)} 
+                                                className="w-full px-2.5 py-1.5 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                placeholder="Ex: Roberto Gomes"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-gray-600 dark:text-gray-400 mb-1">Username (Login)</label>
+                                            <input 
+                                                type="text" 
+                                                value={newUserUsername} 
+                                                onChange={e => setNewUserUsername(e.target.value)} 
+                                                className="w-full px-2.5 py-1.5 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                placeholder="Ex: roberto"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-gray-600 dark:text-gray-400 mb-1">Senha Inicial</label>
+                                            <input 
+                                                type="text" 
+                                                value={newUserPassword} 
+                                                onChange={e => setNewUserPassword(e.target.value)} 
+                                                className="w-full px-2.5 py-1.5 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-gray-600 dark:text-gray-400 mb-1">Perfil de Acesso</label>
+                                            <select 
+                                                value={newUserRole} 
+                                                onChange={e => setNewUserRole(e.target.value as any)}
+                                                className="w-full px-2.5 py-1.5 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white bg-white"
+                                            >
+                                                <option value="admin">Administrador (Total)</option>
+                                                <option value="user">Usuário Comum</option>
+                                                <option value="operator">Operador / Executante</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 pt-1">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setShowAddUserForm(false)} 
+                                            className="px-3 py-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button 
+                                            type="submit" 
+                                            disabled={isCreatingUser}
+                                            className="px-3 py-1 text-xs font-semibold rounded bg-cyan-700 hover:bg-cyan-800 disabled:opacity-50 text-white transition-colors"
+                                        >
+                                            {isCreatingUser ? 'Salvando...' : 'Salvar no Neon'}
+                                        </button>
+                                    </div>
+                                </form>
+                            )}
+
+                            {/* Users list */}
+                            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                                {users.map(u => (
+                                    <div key={u.username} className="flex flex-wrap items-center justify-between gap-2 bg-gray-50 dark:bg-gray-700/70 p-2.5 rounded-lg text-sm border border-gray-200 dark:border-gray-600">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <div className="w-8 h-8 rounded-full bg-cyan-700 text-white font-bold text-xs flex items-center justify-center shrink-0 uppercase">
+                                                {u.name ? u.name.charAt(0) : u.username.charAt(0)}
+                                            </div>
+                                            <div className="truncate">
+                                                <span className="font-medium block text-gray-900 dark:text-white truncate">{u.name}</span>
+                                                <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">@{u.username}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <select
+                                                value={u.role || 'user'}
+                                                onChange={e => handleUpdateUserRole(u.username, e.target.value as any)}
+                                                className={`text-xs px-2 py-1 rounded font-medium border ${
+                                                    u.role === 'admin' 
+                                                        ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800' 
+                                                        : u.role === 'operator'
+                                                        ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+                                                        : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800'
+                                                }`}
+                                                title="Alterar perfil de acesso"
+                                            >
+                                                <option value="admin">Admin</option>
+                                                <option value="user">Usuário</option>
+                                                <option value="operator">Operador</option>
+                                            </select>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => handleResetUserPassword(u.username)}
+                                                className="px-2 py-1 text-xs rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 transition-colors"
+                                                title="Redefinir senha"
+                                            >
+                                                🔑 Senha
+                                            </button>
+
+                                            {u.username !== user.username && (
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => handleDeleteUser(u.username)} 
+                                                    className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors"
+                                                    title="Excluir Usuário no Neon"
+                                                >
+                                                    <TrashIcon className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 ))}
                             </div>

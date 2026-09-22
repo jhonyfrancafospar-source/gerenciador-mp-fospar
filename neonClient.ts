@@ -36,6 +36,23 @@ export const neonApi = {
     },
 
     // Users
+    login: async (username: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> => {
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (res.ok && data.success && data.user) {
+                return { success: true, user: data.user };
+            }
+            return { success: false, error: data.error || 'Credenciais inválidas' };
+        } catch (e: any) {
+            return { success: false, error: e.message || 'Erro ao comunicar com o servidor de autenticação' };
+        }
+    },
+
     getUsers: async (): Promise<User[]> => {
         const res = await fetch('/api/users');
         if (!res.ok) throw new Error('Falha ao obter usuários');
