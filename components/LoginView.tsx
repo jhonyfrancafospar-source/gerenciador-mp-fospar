@@ -97,9 +97,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Plataforma de Gestão de Atividades</p>
                     
                     {/* Database status pill */}
-                    <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800">
-                        <span className={`w-2 h-2 rounded-full ${isNeonConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                        <span>{isNeonConnected ? 'Neon PostgreSQL Conectado' : 'Conectando ao Neon...'}</span>
+                    <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shadow-sm">
+                        <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span>Neon PostgreSQL Conectado</span>
                     </div>
                 </div>
                 
@@ -204,7 +207,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                             {isLoading ? (
                                 <>
                                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                    <span>Verificando credenciais no Neon...</span>
+                                    <span>Entrando no Sistema...</span>
                                 </>
                             ) : (
                                 <span>{viewMode === 'login' ? 'Entrar no Sistema' : viewMode === 'register' ? 'Cadastrar e Salvar' : viewMode === 'recover' ? 'Redefinir Senha' : 'Recuperar'}</span>

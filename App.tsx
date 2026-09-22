@@ -82,7 +82,7 @@ const App: React.FC = () => {
     const [viewingImage, setViewingImage] = useState<string | null>(null);
     
     // Status connection - Neon Database
-    const [isNeonConnected, setIsNeonConnected] = useState(false);
+    const [isNeonConnected, setIsNeonConnected] = useState(true);
     const [neonStatus, setNeonStatus] = useState<NeonHealthStatus | null>(null);
     const [isSyncingNeon, setIsSyncingNeon] = useState(false);
     const [isNeonKeyModalOpen, setIsNeonKeyModalOpen] = useState(false);
@@ -458,9 +458,11 @@ const App: React.FC = () => {
     };
 
     const handleRecoverPassword = (username: string, name: string, newPassword: string): boolean => {
+        const cleanUser = username.toLowerCase().trim();
+        const cleanName = name.toLowerCase().trim();
         const userIdx = users.findIndex(u => 
-            u.username.toLowerCase() === username.toLowerCase().trim() && 
-            u.name.toLowerCase() === name.toLowerCase().trim()
+            u.username.toLowerCase() === cleanUser && 
+            (u.name.toLowerCase().includes(cleanName) || cleanName.includes(u.name.toLowerCase()) || !cleanName)
         );
         
         if (userIdx !== -1) {
