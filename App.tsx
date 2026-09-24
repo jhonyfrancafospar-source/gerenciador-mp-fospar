@@ -1362,7 +1362,7 @@ const App: React.FC = () => {
             case 'report': return <ReportView activities={filteredAndSortedActivities} onImageClick={setViewingImage} customStatusLabels={statusLabels} />;
             case 'audit': return <AuditLogView logs={auditLogs} />;
             case 'manpower': return <ManPowerView activities={filteredAndSortedActivities} />;
-            default: return <DashboardView activities={filteredAndSortedActivities} customStatusLabels={statusLabels} />;
+            default: return <DashboardView activities={filteredAndSortedActivities} allActivities={activities} customStatusLabels={statusLabels} />;
         }
     };
 
